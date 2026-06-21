@@ -14,9 +14,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from showcat.adapters.tickets.providers import best_link, classify_provider, provider_label
 from showcat.ingest.events.models import Event
 from showcat.ingest.history.models import Artist, ArtistTag
 from showcat.outputs.base import BaseOutputAdapter
+from showcat.resolve.matcher import normalize
 from showcat.resolve.models import EventMatch
 from showcat.score.models import EventScore
 
@@ -53,6 +55,45 @@ def normalize_venue_name(name: str) -> str:
     for word in ["music venue", "theater", "theatre", "- portland", "mcmenamins historic", "manor", "and hotel"]:
         name = name.replace(word, "")
     return name.strip()
+
+def canonical_show_key(venue: str, date_iso: str, headliner: str) -> tuple[str, str, str]:
+    """Cross-source identity for a show: (normalised venue, date, normalised headliner).
+
+    Lets a Ticketmaster-discovered event and a venue-direct (Etix) event for the
+    same show collapse into one card so we can prefer the non-TM ticket link.
+    """
+    return (normalize(normalize_venue_name(venue)), date_iso, normalize(headliner))
+
+
+def merge_shows_by_identity(raw_shows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse duplicate shows across sources, choosing the best ticket link.
+
+    Within each canonical-key group the representative is the highest-scored
+    entry (keeps its score/genres/travel), but the ticket link is the
+    most-preferred across all siblings — so an Etix link supersedes the
+    Ticketmaster duplicate. Order of first appearance (score desc) is kept.
+    """
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    order: list[tuple[str, str, str]] = []
+    for show in raw_shows:
+        key = canonical_show_key(show["venue"], show["date"], show["headliner"])
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(show)
+
+    merged: list[dict[str, Any]] = []
+    for key in order:
+        members = groups[key]
+        rep = max(members, key=lambda s: (s.get("score_total") is not None, s.get("score_total") or -1.0))
+        url, provider = best_link([m.get("ticket_url") for m in members])
+        rep = dict(rep)
+        rep["ticket_url"] = url
+        rep["ticket_provider"] = provider
+        rep["ticket_provider_label"] = provider_label(provider)
+        merged.append(rep)
+    return merged
+
 
 def get_venue_capacity(venue_name: str) -> str:
     norm = venue_name.lower()
@@ -164,6 +205,7 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
         else:
             date_display = f"{event.date.strftime('%a %b')} {event.date.day}"
         
+        ticket_provider = event.ticket_provider or classify_provider(event.ticket_url)
         shows.append(
             {
                 "id": event.id,
@@ -174,6 +216,8 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
                 "doors_display": doors_display,
                 "show_display": show_display,
                 "ticket_url": event.ticket_url,
+                "ticket_provider": ticket_provider,
+                "ticket_provider_label": provider_label(ticket_provider),
                 "score_total": round(score.score_total, 3) if score else None,
                 "matched_artist": artist.raw_name if artist else None,
                 "travel_minutes": travel_info["minutes"] if travel_info else None,
@@ -182,9 +226,11 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
                 "timestamp": timestamp
             }
         )
-        if len(shows) >= limit:
-            break
-    return shows
+
+    # Collapse the same show across sources (TM + venue-direct), preferring the
+    # non-Ticketmaster ticket link, then cap to the limit.
+    merged = merge_shows_by_identity(shows)
+    return merged[:limit]
 
 
 def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
@@ -272,6 +318,8 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     
     .drawer-actions {{ display: flex; justify-content: space-between; align-items: center; margin-top: 0.25rem; }}
     .ticket-btn {{ font-size: 0.8rem; font-weight: 600; color: var(--bg); background: var(--accent); padding: 0.35rem 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; }}
+    .ticket-btn--tm {{ background: var(--muted); }}
+    .ticket-via {{ font-size: 0.65rem; font-weight: 500; opacity: 0.85; }}
     .travel-chip {{ font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); }}
     .score-chip {{ font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent); background: var(--accent-dim); padding: 0.15rem 0.4rem; border-radius: 4px; }}
 
@@ -352,7 +400,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
             <div class="drawer-actions">
               <span class="travel-chip" v-if="show.travel_minutes">{{{{ show.travel_minutes }}}}m drive</span>
               <span v-else></span>
-              <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" class="ticket-btn" @click.stop>Tickets &rarr;</a>
+              <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" class="ticket-btn" :class="{{ 'ticket-btn--tm': show.ticket_provider === 'ticketmaster' }}" @click.stop>Tickets<span v-if="show.ticket_provider_label && show.ticket_provider_label !== 'Tickets'" class="ticket-via">via {{{{ show.ticket_provider_label }}}}</span> &rarr;</a>
             </div>
           </div>
         </div>
