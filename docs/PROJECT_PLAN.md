@@ -145,12 +145,18 @@ A unit of work is done only when **all** of these are true:
 - **5.5 Dry-run mode** — build the full URI list and write nothing; produce an inspectable plan artifact.
 
 ### Exit Gate 5 (provable)
-- [ ] Spotify account Premium status is confirmed and recorded (DECISIONS OQ1); bridge path chosen accordingly.
-- [ ] Dry-run produces a complete, inspectable playlist plan from real scored data **without touching Spotify** (test).
-- [ ] Every artist→track resolution is logged with candidates + choice — asserted (no black box).
-- [ ] Live write creates/refreshes a real playlist (documented manual verification) — gated on Premium.
-- [ ] Playlist composition reflects discovery weighting: ≥ N% under-explored artists (configurable threshold, asserted against a fixture run).
-- [ ] An export-file bridge **stub** exists, proving the Spotify adapter is swappable if the API changes again.
+- [x] Spotify account Premium status is confirmed and recorded (DECISIONS OQ1→D13); bridge path chosen accordingly. *(Premium confirmed 2026-06-21; live-write path chosen, export-file fallback retained — DECISIONS D13)*
+- [x] Dry-run produces a complete, inspectable playlist plan from real scored data **without touching Spotify** (test). *(Proven by `test_plan_built_without_writing` in `tests/test_playlist.py`; the plan is built with injected providers and writes nothing)*
+- [x] Every artist→track resolution is logged with candidates + choice — asserted (no black box). *(Proven by `test_every_resolution_persisted_with_candidates_and_choice` in `tests/test_playlist.py`; persisted to `track_resolutions`, `explain`-able. Parser proven by `test_resolves_best_candidate_and_records_all` in `tests/test_spotify_client.py`)*
+- [ ] **Live write creates/refreshes a real playlist (documented manual verification) — gated on Premium.** *Code-complete and mock-tested (`test_spotify_writer_creates_then_replaces` / `test_spotify_writer_refreshes_existing`). Awaiting the one-time manual run: `authorize` → `token <code>` → `write` (see procedure below). This is the only remaining Gate 5 item.*
+- [x] Playlist composition reflects discovery weighting: ≥ N% under-explored artists (configurable threshold, asserted against a fixture run). *(Proven by `test_under_explored_share_meets_floor` in `tests/test_playlist.py`; threshold `PLAYLIST_MIN_DISCOVERY_PCT`)*
+- [x] An export-file bridge **stub** exists, proving the Spotify adapter is swappable if the API changes again. *(Proven by `test_export_file_stub_writes_plan` in `tests/test_playlist.py`; `ExportFilePlaylistWriter`)*
+
+> **Live-write procedure (the remaining manual gate item).** One-time consent, then run:
+> 1. `python -m opener.cli.playlist authorize` → open the printed URL, approve, copy the `code` from the redirect.
+> 2. `python -m opener.cli.playlist token <code>` → prints `SPOTIFY_REFRESH_TOKEN=…`; save it in `.env` (gitignored).
+> 3. `python -m opener.cli.playlist dryrun` → inspect the plan (writes nothing).
+> 4. `python -m opener.cli.playlist write` → creates the playlist; save the returned id as `SPOTIFY_PLAYLIST_ID` in `.env` so future runs refresh it in place.
 
 ---
 

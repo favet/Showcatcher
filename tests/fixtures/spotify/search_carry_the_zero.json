@@ -1,0 +1,24 @@
+{
+  "tracks": {
+    "items": [
+      {
+        "uri": "spotify:track:0CZ1Carry",
+        "name": "Carry the Zero",
+        "artists": [{"name": "Built to Spill"}],
+        "popularity": 62
+      },
+      {
+        "uri": "spotify:track:0CZ2Live",
+        "name": "Carry the Zero - Live",
+        "artists": [{"name": "Built to Spill"}],
+        "popularity": 28
+      },
+      {
+        "uri": "spotify:track:0XXcover",
+        "name": "Carry the Zero",
+        "artists": [{"name": "Some Cover Band"}],
+        "popularity": 5
+      }
+    ]
+  }
+}

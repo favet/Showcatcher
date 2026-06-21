@@ -127,3 +127,31 @@ class LastFmClient:
                 weight = 0.0
             tags.append((name, weight))
         return tags
+
+    def get_top_tracks(
+        self, artist: str, mbid: str | None = None, limit: int = 10
+    ) -> list[str]:
+        """Return an artist's most popular track names, most-played first.
+
+        Uses artist.getTopTracks. Track *selection* is kept on Last.fm (off the
+        eroding Spotify API) — Spotify is only used later to resolve each track
+        name to a URI. Names are returned in Last.fm's playcount order.
+        """
+        params: dict[str, Any] = {
+            "method": "artist.gettoptracks",
+            "autocorrect": 1,
+            "limit": limit,
+        }
+        if mbid:
+            params["mbid"] = mbid
+        else:
+            params["artist"] = artist
+
+        data = self._get(params)
+        raw_tracks = data.get("toptracks", {}).get("track", [])
+        names: list[str] = []
+        for entry in raw_tracks:
+            name = entry.get("name")
+            if name:
+                names.append(name)
+        return names

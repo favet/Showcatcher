@@ -48,8 +48,10 @@ Format: `Dn — Title — Decision — Why — Status`.
 
 ## Open questions (do not hardcode silently — resolve in the noted phase)
 
-### OQ1 — Is the Spotify account Premium? *(blocks Phase 5 live write)*
-Dev-mode apps now require the owner to hold Premium. If not Premium, pivot the bridge to the export-file path. **Resolve before Phase 5.**
+### D13 — Spotify account is Premium; live-write bridge path chosen *(resolved Phase 5, OQ1)*
+**Decision:** The owner's Spotify account holds Premium (confirmed 2026-06-21), so the **live-write** bridge path is taken: select tracks on Last.fm, resolve URIs via Spotify `/search`, write via `POST /me/playlists` + replace items. The export-file path remains implemented as a fallback stub (`ExportFilePlaylistWriter`) proving swappability, not as the primary.
+**Why:** Dev-mode apps now require the owner to hold Premium; Premium is present, so the hero output can write a real playlist.
+**Status:** Resolved. Live write is code-complete and mock-tested; it awaits the one-time OAuth consent + a manual run to verify against the real account (the remaining Gate 5 manual item).
 
 ### D9 — Event source: Ticketmaster Discovery API *(resolved Phase 2.1)*
 **Decision:** Use the Ticketmaster Discovery API (`https://app.ticketmaster.com/discovery/v2/`) as the first (and primary) event source adapter.

@@ -1,0 +1,10 @@
+{
+  "toptracks": {
+    "track": [
+      {"name": "Carry the Zero", "playcount": "1200000", "@attr": {"rank": "1"}},
+      {"name": "Center of the Universe", "playcount": "640000", "@attr": {"rank": "2"}},
+      {"name": "The Plan", "playcount": "510000", "@attr": {"rank": "3"}}
+    ],
+    "@attr": {"artist": "Built to Spill"}
+  }
+}
