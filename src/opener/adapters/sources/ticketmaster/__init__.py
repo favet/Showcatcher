@@ -1,0 +1,1 @@
+# ticketmaster adapter package

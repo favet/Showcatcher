@@ -6,6 +6,10 @@ from pytest import MonkeyPatch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+import opener.ingest.events.models  # noqa: F401
+
+# Import all models so Base.metadata.create_all picks up Phase 1 and 2 tables
+import opener.ingest.history.models  # noqa: F401
 from opener.core.database import DATABASE_URL, Base
 
 # Connect to the test DB
@@ -44,5 +48,9 @@ def mock_get_db_session(monkeypatch: MonkeyPatch, db_session: Session) -> None:
     def mock_session_generator() -> Generator[Session, None, None]:
         yield db_session
 
+    # Core framework
     monkeypatch.setattr("opener.core.database.get_db_session", mock_session_generator)
     monkeypatch.setattr("opener.core.base.get_db_session", mock_session_generator)
+    # Stage modules that import get_db_session directly
+    monkeypatch.setattr("opener.ingest.history.backfill.get_db_session", mock_session_generator)
+

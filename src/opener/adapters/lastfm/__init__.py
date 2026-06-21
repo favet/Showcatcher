@@ -1,0 +1,1 @@
+# Last.fm adapter package

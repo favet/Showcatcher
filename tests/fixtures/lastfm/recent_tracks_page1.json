@@ -1,0 +1,67 @@
+{
+  "recenttracks": {
+    "track": [
+      {
+        "artist": {
+          "#text": "Modest Mouse",
+          "mbid": "d517b1f5-4ea9-4e00-bfbb-aaa6c91b1d5d"
+        },
+        "album": {
+          "#text": "Good News for People Who Love Bad News",
+          "mbid": "1f3ee9c3-2455-44f2-9f4d-fd1e66b0e8f4"
+        },
+        "name": "Float On",
+        "mbid": "a7c77b72-e4a3-4a4e-a9f1-5a39289c38dd",
+        "url": "https://www.last.fm/music/Modest+Mouse/_/Float+On",
+        "date": {
+          "uts": "1718755200",
+          "#text": "19 Jun 2026, 00:00"
+        },
+        "@attr": {}
+      },
+      {
+        "artist": {
+          "#text": "Mt. Joy",
+          "mbid": ""
+        },
+        "album": {
+          "#text": "Mt. Joy",
+          "mbid": ""
+        },
+        "name": "Cardinal",
+        "mbid": "",
+        "url": "https://www.last.fm/music/Mt.+Joy/_/Cardinal",
+        "date": {
+          "uts": "1718751600",
+          "#text": "18 Jun 2026, 23:00"
+        },
+        "@attr": {}
+      },
+      {
+        "artist": {
+          "#text": "Death Cab for Cutie",
+          "mbid": "3fa91a95-e78d-4b06-b0e1-5960b6855cd5"
+        },
+        "album": {
+          "#text": "Plans",
+          "mbid": "f19ece9d-b4c0-38ca-af5f-84d89e73dd55"
+        },
+        "name": "Soul Meets Body",
+        "mbid": "",
+        "url": "https://www.last.fm/music/Death+Cab+for+Cutie/_/Soul+Meets+Body",
+        "date": {
+          "uts": "1718748000",
+          "#text": "18 Jun 2026, 22:00"
+        },
+        "@attr": {}
+      }
+    ],
+    "@attr": {
+      "user": "testuser",
+      "page": "1",
+      "perPage": "200",
+      "totalPages": "1",
+      "total": "3"
+    }
+  }
+}

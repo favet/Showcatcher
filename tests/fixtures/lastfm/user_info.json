@@ -1,0 +1,11 @@
+{
+  "user": {
+    "name": "testuser",
+    "realname": "Test User",
+    "playcount": "3",
+    "registered": {
+      "unixtime": "1200000000",
+      "#text": "2008-01-10 13:00"
+    }
+  }
+}

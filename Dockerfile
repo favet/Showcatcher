@@ -9,8 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     && rm -rf /var/lib/apt/lists/*
 
-# Pre-install dependencies for caching
+# Copy pyproject.toml and src so editable install can find the package
 COPY pyproject.toml /app/
+COPY src/ /app/src/
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e .[dev]
 

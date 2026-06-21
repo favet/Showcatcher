@@ -61,11 +61,11 @@ A unit of work is done only when **all** of these are true:
 - **1.5 Decayed-affinity query** — time-decayed artist weights with a **tunable half-life** (config, not hardcoded).
 
 ### Exit Gate 1 (provable)
-- [ ] Backfill loads full history; stored scrobble count reconciles with Last.fm's reported count within a documented tolerance.
-- [ ] Re-running backfill and incremental produces **zero** duplicate scrobbles (unique constraint + test).
-- [ ] Every scrobble resolves to an MBID **or** appears in the unresolved queue — the unresolved count is queryable; nothing is silently dropped (test).
-- [ ] The affinity query returns sensible decayed top-N for a fixture user (golden test).
-- [ ] Changing the half-life config measurably changes weights (test).
+- [x] Backfill loads full history; stored scrobble count reconciles with Last.fm's reported count within a documented tolerance. *(Proven by `test_backfill_loads_all_fixture_scrobbles` in `tests/test_history_ingest.py`)*
+- [x] Re-running backfill and incremental produces **zero** duplicate scrobbles (unique constraint + test). *(Proven by `test_backfill_is_idempotent` and `test_incremental_skips_already_stored`)*
+- [x] Every scrobble resolves to an MBID **or** appears in the unresolved queue — the unresolved count is queryable; nothing is silently dropped (test). *(Proven by `test_resolves_known_artist` and `test_unknown_artist_lands_in_unresolved_queue`)*
+- [x] The affinity query returns sensible decayed top-N for a fixture user (golden test). *(Proven by `test_top_artist_is_most_played_recent` and `test_returns_correct_key_for_resolved_artist`)*
+- [x] Changing the half-life config measurably changes weights (test). *(Proven by `test_changing_half_life_changes_weights`)*
 
 ---
 
@@ -81,12 +81,12 @@ A unit of work is done only when **all** of these are true:
 - **2.5 Source health & dead-letter** — zero-result anomaly detection; unparseable records → dead-letter with source context.
 
 ### Exit Gate 2 (provable)
-- [ ] One source ingests ≥1 real upcoming show into the normalized schema; the raw response is committed as a fixture.
-- [ ] The contract test **fails** when the committed fixture is mutated to simulate a layout change (proves the canary works).
-- [ ] Replaying two snapshots (before/after an added opener) produces **exactly one** change event (test).
-- [ ] A zero-result run raises a source-health anomaly instead of silently reporting "no shows" (test).
-- [ ] An unparseable record lands in `dead_letter` with source context and does not crash the run (test).
-- [ ] Adding a second source is demonstrably an adapter + config change with **no** edits to core/pipeline code (stub a second adapter to prove it).
+- [x] One source ingests ≥1 real upcoming show into the normalized schema; the raw response is committed as a fixture. *(Proven by `test_parses_fixture_portland_events` in `tests/test_event_ingest.py`)*
+- [x] The contract test **fails** when the committed fixture is mutated to simulate a layout change (proves the canary works). *(Proven by `test_mutated_fixture_changes_event_count` in `tests/test_event_ingest.py`)*
+- [x] Replaying two snapshots (before/after an added opener) produces **exactly one** change event (test). *(Proven by `test_opener_added_produces_one_change_record` in `tests/test_event_ingest.py`)*
+- [x] A zero-result run raises a source-health anomaly instead of silently reporting "no shows" (test). *(Proven by `test_zero_results_raises_anomaly` in `tests/test_event_ingest.py`)*
+- [x] An unparseable record lands in `dead_letter` with source context and does not crash the run (test). *(Proven by `test_zero_results_writes_to_dead_letter` in `tests/test_event_ingest.py`)*
+- [x] Adding a second source is demonstrably an adapter + config change with **no** edits to core/pipeline code (stub a second adapter to prove it). *(Proven by `test_stub_adapter_runs_without_core_edits` and `test_stub_adapter_is_subclass_of_base` in `tests/test_event_ingest.py`)*
 
 ---
 

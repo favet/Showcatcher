@@ -1,8 +1,8 @@
 import os
 from collections.abc import Generator
-from datetime import datetime
 from contextlib import contextmanager
-from typing import Any, Dict
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Integer, String, Text, create_engine, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -51,7 +51,7 @@ class RunLedger(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     records_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    run_metadata: Mapped[Dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    run_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
 
 class DeadLetter(Base):

@@ -51,8 +51,11 @@ Format: `Dn — Title — Decision — Why — Status`.
 ### OQ1 — Is the Spotify account Premium? *(blocks Phase 5 live write)*
 Dev-mode apps now require the owner to hold Premium. If not Premium, pivot the bridge to the export-file path. **Resolve before Phase 5.**
 
-### OQ2 — Venue source backends *(Phase 2.1)*
-Which Portland venues publish via their own site JSON-LD vs. a shared ticketer (Etix, See Tickets, Eventbrite, Dice, AXS) vs. an aggregator (Bandsintown, Songkick)? Inventory first; one aggregator may replace several brittle scrapers. **Record findings here when known.**
+### D9 — Event source: Ticketmaster Discovery API *(resolved Phase 2.1)*
+**Decision:** Use the Ticketmaster Discovery API (`https://app.ticketmaster.com/discovery/v2/`) as the first (and primary) event source adapter.
+**Why:** Bandsintown's public API is artist-centric only (no venue query). Songkick API access is heavily restricted. The major Portland venues that matter (Crystal Ballroom, Hawthorne Theatre, Wonder Ballroom, Roseland, Arlene Schnitzer, McMenamins) all sell tickets through Ticketmaster/Live Nation, making a single `venueId`-filtered query cleanly cover all of them. The API is free for developers, returns structured JSON, and provides `headliner`, openers (embedded in event name/attractions), `date`, `on_sale_date`, and `ticket_url` directly. A `venue` config file maps Ticketmaster venue IDs to friendly names.
+**Fallback:** If Ticketmaster restricts their API further, the adapter interface allows swapping to direct venue-site scraping per the recipe in AGENTS.md.
+**Status:** Decided. Add `TICKETMASTER_API_KEY` to `.env.example`.
 
 ### OQ3 — Decay half-life default *(Phase 6 tuning)*
 Starting placeholder is a tunable parameter (lean: ~8 weeks), calibrated against real output. Not fixed.
