@@ -10,6 +10,7 @@ import sys
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from opener.core import config as _config  # noqa: F401  (loads .env on import)
 from opener.core import database
 from opener.ingest.events.models import Event
 from opener.ingest.history.models import Artist

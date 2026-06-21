@@ -17,6 +17,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 from opener.adapters.sources.ticketmaster.adapter import TicketmasterAdapter
+from opener.core import config as _config  # noqa: F401  (loads .env on import)
 from opener.core.base import BaseStage
 from opener.core.database import RunLedger
 from opener.ingest.events.snapshot import EventSnapshotStage

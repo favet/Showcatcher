@@ -17,6 +17,7 @@ import sys
 from opener.adapters.lastfm.client import LastFmClient
 from opener.adapters.spotify.auth import SpotifyAuth, SpotifyToken
 from opener.adapters.spotify.client import SpotifyClient
+from opener.core import config as _config  # noqa: F401  (loads .env on import)
 from opener.core import database
 from opener.outputs.playlist.adapter import PlaylistOutputAdapter, PlaylistPlan
 from opener.outputs.playlist.writers import (
