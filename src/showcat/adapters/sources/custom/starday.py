@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from typing import Any
 
 import requests
@@ -57,9 +57,20 @@ class StardayTavernAdapter(BaseSourceAdapter):
                 if not start_str:
                     continue
                     
-                # Format: 2024-01-16T18:00:00-08:00
                 date_part = start_str.split("T")[0]
                 event_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+                
+                # Parse time from ISO datetime (e.g. "T18:00:00-08:00")
+                start_time_val: dt_time | None = None
+                if "T" in start_str:
+                    try:
+                        time_portion = start_str.split("T")[1]
+                        # Strip timezone offset
+                        time_clean = time_portion.split("-")[0].split("+")[0]
+                        t_parts = time_clean.split(":")
+                        start_time_val = dt_time(int(t_parts[0]), int(t_parts[1]))
+                    except (ValueError, IndexError):
+                        pass
                 
                 # Filter out past events early? We can just pass them, snapshot stage handles it
                 
@@ -72,6 +83,7 @@ class StardayTavernAdapter(BaseSourceAdapter):
                         source_id=source_id,
                         headliner=title,
                         event_date=event_date,
+                        show_time=start_time_val,
                         venue="Starday Tavern",
                         ticket_url=event_url,
                     )

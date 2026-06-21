@@ -1,4 +1,4 @@
-﻿"""Ticketmaster Discovery API source adapter.
+"""Ticketmaster Discovery API source adapter.
 
 Fetches upcoming music events at configured Portland venues using the
 Ticketmaster Discovery API v2 (/events.json with venueId filter).
@@ -22,7 +22,7 @@ These are stored in config, NOT hardcoded in logic.
 import contextlib
 import logging
 import os
-from datetime import date
+from datetime import date, time
 from typing import Any
 
 import requests
@@ -114,6 +114,16 @@ class TicketmasterAdapter(BaseSourceAdapter):
                 return None
             event_date = date.fromisoformat(start_str)
 
+            # Time (e.g. "19:30:00")
+            start_time_val: time | None = None
+            time_str = dates.get("start", {}).get("localTime")
+            if time_str:
+                try:
+                    parts = time_str.split(":")
+                    start_time_val = time(int(parts[0]), int(parts[1]))
+                except (ValueError, IndexError):
+                    pass
+
             # On-sale date
             on_sale_str = (
                 dates.get("sales", {}).get("public", {}).get("startDateTime", "")[:10]
@@ -137,6 +147,7 @@ class TicketmasterAdapter(BaseSourceAdapter):
                 source_id=event_id,
                 headliner=headliner,
                 event_date=event_date,
+                show_time=start_time_val,
                 venue=venue_name,
                 openers=openers,
                 on_sale_date=on_sale,

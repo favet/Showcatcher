@@ -8,7 +8,7 @@ Adding a new source = new adapter subclass + config entry. Zero core edits.
 """
 import abc
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, time
 
 
 @dataclass
@@ -24,6 +24,8 @@ class RawEvent:
     event_date: date
     venue: str
     openers: list[str] = field(default_factory=list)
+    doors_time: time | None = None
+    show_time: time | None = None
     on_sale_date: date | None = None
     ticket_url: str | None = None
 

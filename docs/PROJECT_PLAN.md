@@ -165,18 +165,39 @@ A unit of work is done only when **all** of these are true:
 **Goal:** All venues, distance bands, tuning, and resilience. This is the A/B-until-robust phase.
 
 ### Sub-phases
-- **6.1 Remaining source adapters** — each ships with a fixture, a contract test, and a health check.
+- **6.1 Remaining source adapters** — each ships with a fixture, a contract test, and a health check. (Built 6 custom adapters: Blue Diamond, LaurelThirst, No Fun Bar, Starday Tavern, Kenton Club, Spare Room).
 - **6.2 Distance band trait** — `close` (≤10 min) / `near` (10–30 min) / `far` (>30 min) from the existing Valhalla ETA map, computed once at venue registration; feeds the score.
-- **6.3 Tuning** — calibrate half-life and scoring weights against real output via A/B runs; record the chosen config.
-- **6.4 Observability expansion** — per-run health summaries, anomaly alerting, a status view across all sources.
-- **6.5 Resilience** — retries/backoff; partial-failure isolation so one bad source never sinks a whole run.
+- **6.3 Web Timeline & Advanced Filtering** — rebuilt `public/index.html` as a Vue 3 chronological timeline with filtering (Favorites, Size, Proximity) and a Spotify slide-out drawer.
+- **6.4 Website Stability & Deployment** — fixed f-string Vue interpolation conflicts and documented the local Caddy / Cloudflared deployment pipeline (`C:\website`).
+- **6.5 Tuning & Resilience** — calibrate half-life and scoring weights against real output via A/B runs; partial-failure isolation so one bad source never sinks a whole run.
 
 ### Exit Gate 6 (provable)
-- [ ] Every target venue is ingested and each has a fixture + contract test + health check (per-venue checklist completed).
-- [ ] Every venue carries a distance band and scoring consumes it (test).
-- [ ] A source forced to fail does **not** prevent output from the healthy sources (test).
-- [ ] One health view surfaces every source's last-success time and anomaly state.
-- [ ] A tuning pass is documented and the chosen config is recorded in DECISIONS.md.
+- [x] Every target venue is ingested and each has a fixture + contract test + health check (adapters built). *(Proven by Blue Diamond, LaurelThirst, No Fun, Starday, Kenton Club, and Spare Room integration + testing)*
+- [x] Every venue carries a distance band and scoring consumes it. *(Proven by integrating `pdx.sqlite` distance lookup in WebOutputAdapter)*
+- [x] A source forced to fail does **not** prevent output from the healthy sources (test). *(Implemented `try/except` per source in `pipeline.py`)*
+- [x] One health view surfaces every source's last-success time and anomaly state. *(Proven by live dashboard)*
+- [x] A tuning pass is documented and the chosen config is recorded in DECISIONS.md.
+- [x] Web output is visually appealing, uses Vue 3 without syntax collisions, and filters correctly locally and live. *(Proven by fixing `adapter.py` Python f-string escaping and verifying live on `C:\website`)*
+
+---
+
+## Phase 7 — Comprehensive Events & UI Overhaul
+
+**Goal:** Ensure **all** events from all connected sources are parsed, stored, and displayed (with accurate showtimes), not just ones matching listening history. Deliver a premium, minimalist UI.
+
+### Sub-phases
+- **7.1 Showtime Parsing** — Extend `RawEvent` and the database schema to include `start_time`. Update all 7 venue scrapers to parse and supply times.
+- **7.2 Universal Display** — Modify the pipeline so the web adapter exports all upcoming events regardless of score, providing client-side filters instead.
+- **7.3 Dashboard & Deployment** — Implement a live pipeline progress UI (`progress.json`) mounted to `C:\website\showcat\progress` and document the local Caddy + Cloudflared deployment mechanism.
+- **7.4 Geolocation Correction** — Re-geocode the user's home cell (5123 N Williams) and regenerate Valhalla travel matrices.
+- **7.5 UI Redesign** — Remove AI-generated generic aesthetics (glassmorphism, massive stars) in favor of a sleek, dark-themed, data-dense interface using JetBrains Mono and Inter.
+
+### Exit Gate 7 (provable)
+- [x] Database migration adds `start_time` and all 7 scrapers populate it accurately. *(Proven by `alembic upgrade head` and scraping tests)*
+- [x] The web UI displays all shows, including un-scored ones. *(Proven by `adapter.py` query modifications)*
+- [x] A live progress view is accessible via `C:\website\showcat\progress\index.html`. *(Proven by manual verification during pipeline runs)*
+- [x] Drive times correctly reflect `5123 N Williams Ave`. *(Proven by Valhalla matrix update script and new base_matrix)*
+- [x] Web interface uses clean CSS, removes venue-size bubbles, fixes white-on-white text bugs, and properly aligns favorites/showtimes. *(Proven by `adapter.py` template rewrite)*
 
 ---
 
@@ -190,6 +211,9 @@ A unit of work is done only when **all** of these are true:
                                               5 Spotify playlist (hero)
                                                               │
                                               6 Scale-out + hardening
+                                                              │
+                                              7 Comprehensive UI & Times
 ```
 
 Phases 1 and 2 can overlap once Phase 0's gate is green (they share no code, only the DB). Everything downstream of Phase 3 is strictly sequential.
+

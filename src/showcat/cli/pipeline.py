@@ -20,6 +20,7 @@ from showcat.adapters.sources.ticketmaster.adapter import TicketmasterAdapter
 from showcat.core import config as _config  # noqa: F401  (loads .env on import)
 from showcat.core.base import BaseStage
 from showcat.core.database import RunLedger
+from showcat.core.progress import PipelineProgress
 from showcat.ingest.events.snapshot import EventSnapshotStage
 from showcat.ingest.history.backfill import HistoryBackfillStage
 from showcat.ingest.history.mbid_resolve import MbidResolveStage
@@ -47,15 +48,10 @@ def run_pipeline(
     resolve_mbids: bool = False,
     scoring_version: str = "discovery-v1",
 ) -> None:
-    """Run ingest + score end to end.
+    """Run ingest + score end to end."""
+    progress = PipelineProgress()
+    progress.start()
 
-    Args:
-        backfill_days: only pull scrobbles from the last N days (None = full
-            history). Recent history is what decayed affinity weights anyway.
-        resolve_mbids: also run MBID resolution (one Last.fm call per unresolved
-            artist — slow over a large library; name matching works without it).
-        scoring_version: scoring config to persist (default the discovery tilt).
-    """
     since_ts: int | None = None
     if backfill_days is not None:
         since_ts = int((datetime.now(UTC) - timedelta(days=backfill_days)).timestamp())
@@ -63,42 +59,101 @@ def run_pipeline(
     steps: list[tuple[str, int]] = []
     total = 6 if resolve_mbids else 5
 
+    # --- Stage 1: Backfill ---
     print(f"[1/{total}] Backfilling Last.fm history...")
-    backfill_kwargs = {"since_ts": since_ts} if since_ts else {}
-    steps.append(("backfill scrobbles", _run_stage(HistoryBackfillStage(), **backfill_kwargs)))
+    stage_prog = progress.start_stage("Last.fm History Backfill")
+    try:
+        backfill_kwargs = {"since_ts": since_ts} if since_ts else {}
+        count = _run_stage(HistoryBackfillStage(), **backfill_kwargs)
+        steps.append(("backfill scrobbles", count))
+        progress.complete_stage(stage_prog, count)
+    except Exception as e:
+        progress.fail_stage(stage_prog, str(e))
+        raise
 
+    # --- Stage 2 (optional): MBID resolve ---
     if resolve_mbids:
         print("[2/6] Resolving artist MBIDs...")
-        steps.append(("mbids resolved", _run_stage(MbidResolveStage())))
+        stage_prog = progress.start_stage("MBID Resolution")
+        try:
+            count = _run_stage(MbidResolveStage())
+            steps.append(("mbids resolved", count))
+            progress.complete_stage(stage_prog, count)
+        except Exception as e:
+            progress.fail_stage(stage_prog, str(e))
+            raise
 
+    # --- Stage 3: Events ---
     from showcat.adapters.sources.custom import ALL_CUSTOM_ADAPTERS
 
     n = len(steps) + 1
-    print(f"[{n}/{total}] Ingesting Ticketmaster events...")
-    
+    print(f"[{n}/{total}] Ingesting events from all sources...")
+
+    all_adapters = [TicketmasterAdapter()] + [Cls() for Cls in ALL_CUSTOM_ADAPTERS]
+    stage_prog = progress.start_stage("Event Scraping", total=len(all_adapters))
     total_event_changes = 0
-    try:
-        total_event_changes += _run_stage(EventSnapshotStage(TicketmasterAdapter()))
-    except Exception as e:
-        print(f"  [warn] Ticketmaster adapter failed: {e}")
-        
-    print(f"[{n}/{total}] Ingesting Custom Venue events...")
-    for AdapterClass in ALL_CUSTOM_ADAPTERS:
+
+    for i, adapter in enumerate(all_adapters):
         try:
-            total_event_changes += _run_stage(EventSnapshotStage(AdapterClass()))
+            total_event_changes += _run_stage(EventSnapshotStage(adapter))
         except Exception as e:
-            print(f"  [warn] {AdapterClass.__name__} failed: {e}")
-            
+            print(f"  [warn] {adapter.source_name} failed: {e}")
+        progress.update_stage(stage_prog, i + 1)
+
     steps.append(("event changes", total_event_changes))
+    progress.complete_stage(stage_prog, total_event_changes)
 
+    # --- Stage 4: Resolve ---
     print(f"[{n + 1}/{total}] Resolving event artists to taste...")
-    steps.append(("artist matches", _run_stage(ResolveStage())))
+    stage_prog = progress.start_stage("Artist Matching")
+    try:
+        count = _run_stage(ResolveStage())
+        steps.append(("artist matches", count))
+        progress.complete_stage(stage_prog, count)
+    except Exception as e:
+        progress.fail_stage(stage_prog, str(e))
+        raise
 
+    # --- Stage 5: Tags ---
     print(f"[{n + 2}/{total}] Fetching tags for matched artists...")
-    steps.append(("tag rows", _run_stage(ArtistTagStage(matched_only=True))))
+    stage_prog = progress.start_stage("Tag Fetching")
+    try:
+        count = _run_stage(ArtistTagStage(matched_only=True))
+        steps.append(("tag rows", count))
+        progress.complete_stage(stage_prog, count)
+    except Exception as e:
+        progress.fail_stage(stage_prog, str(e))
+        raise
 
+    # --- Stage 6: Score ---
     print(f"[{n + 3}/{total}] Scoring shows ({scoring_version})...")
-    steps.append(("scored shows", _run_stage(ScoreStage(scoring_version=scoring_version))))
+    stage_prog = progress.start_stage("Show Scoring")
+    try:
+        count = _run_stage(ScoreStage(scoring_version=scoring_version))
+        steps.append(("scored shows", count))
+        progress.complete_stage(stage_prog, count)
+    except Exception as e:
+        progress.fail_stage(stage_prog, str(e))
+        raise
+
+    # --- Stage 7: Generate Web Output ---
+    print(f"[{n + 4}/{total + 1}] Generating web output...")
+    stage_prog = progress.start_stage("Web Output Generation")
+    try:
+        from showcat.core.database import get_db_session
+        from showcat.outputs.web.adapter import WebOutputAdapter
+        
+        adapter = WebOutputAdapter()
+        with get_db_session() as session:
+            out_path = adapter.write(session)
+        steps.append(("web output", 1))
+        progress.complete_stage(stage_prog, 1)
+        print(f"  Written to {out_path}")
+    except Exception as e:
+        progress.fail_stage(stage_prog, str(e))
+        raise
+
+    progress.complete()
 
     print("\nDone. Summary:")
     for label, count in steps:
@@ -110,5 +165,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         days = None if sys.argv[1] == "full" else int(sys.argv[1])
     start = time.monotonic()
-    run_pipeline(backfill_days=days)
+    try:
+        run_pipeline(backfill_days=days)
+    except Exception as e:
+        print(f"\nPipeline failed: {e}")
     print(f"\nElapsed: {time.monotonic() - start:.1f}s")

@@ -1,12 +1,12 @@
-import re
 import logging
-from datetime import datetime, date
-from typing import Any
+import re
+from datetime import date, datetime
 
 import requests
 from bs4 import BeautifulSoup
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
+from showcat.adapters.sources.custom.time_utils import extract_doors_show_times
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class SpareRoomAdapter(BaseSourceAdapter):
         events: list[RawEvent] = []
         url = "https://spareroomrestaurantandlounge.com/music-calendar.html"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        
+
         try:
             resp = requests.get(url, headers=headers, timeout=15)
             resp.raise_for_status()
@@ -29,31 +29,29 @@ class SpareRoomAdapter(BaseSourceAdapter):
         except requests.RequestException as e:
             logger.error(f"Failed to fetch Spare Room events: {e}")
             raise
-            
+
         soup = BeautifulSoup(html_content, "html.parser")
-        
+
         date_pat = re.compile(
             r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\s*'
             r'(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*'
             r'(\d{1,2})(?:st|nd|rd|th)?',
             re.IGNORECASE
         )
-        
+
         # Weebly text can have random zero-width spaces (\u200b)
         for el in soup.find_all("div", class_="paragraph"):
             text = el.get_text('\n', strip=True).replace('\u200b', '')
             if not text:
                 continue
-                
+
             lines = text.split('\n')
-            
+
             # Find the date line
             event_date = None
-            date_line_idx = -1
-            
             year = date.today().year
-            
-            for i, line in enumerate(lines):
+
+            for line in lines:
                 match = date_pat.search(line)
                 if match:
                     # Parse the matched date
@@ -70,24 +68,26 @@ class SpareRoomAdapter(BaseSourceAdapter):
                             if (date.today() - dt).days > 90:
                                 dt = datetime.strptime(f"{year+1} {month} {day}", "%Y %b %d").date()
                             event_date = dt
-                            date_line_idx = i
                         except ValueError:
                             pass
                     break
-                    
+
             if not event_date:
                 continue
-                
+
             # Filter recurring that aren't specific shows
             lower_text = text.lower()
             if "every thursday" in lower_text or "every monday" in lower_text or "jam session" in lower_text:
                 continue
-                
+
             headliner = lines[0].strip()
-            
+
             if "KARAOKE" in headliner.upper() or "BINGO" in headliner.upper():
                 continue
-                
+
+            # Parse doors and show times from the full text block.
+            doors_time_val, show_time_val = extract_doors_show_times(text)
+
             openers = []
             for line in lines[1:]:
                 if line.lower().startswith('w/') or line.lower().startswith('with '):
@@ -95,10 +95,10 @@ class SpareRoomAdapter(BaseSourceAdapter):
                     opener_str = line[2:].strip()
                     if opener_str:
                         openers = [o.strip() for o in opener_str.split('&') if o.strip()]
-                        
+
             if headliner:
                 source_id = f"{event_date.strftime('%Y-%m-%d')}-{headliner[:10].replace(' ', '').lower()}"
-                
+
                 events.append(
                     RawEvent(
                         source=self.source_name,
@@ -106,6 +106,8 @@ class SpareRoomAdapter(BaseSourceAdapter):
                         headliner=headliner,
                         openers=openers,
                         event_date=event_date,
+                        doors_time=doors_time_val,
+                        show_time=show_time_val,
                         venue="The Spare Room",
                         ticket_url=url,
                     )

@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 
 import requests
@@ -52,6 +52,18 @@ class LaurelThirstAdapter(BaseSourceAdapter):
                     continue
                     
                 date_part = start_str.split("T")[0]
+                # Parse time from the T portion (e.g. "13:00-7:00")
+                start_time_val: time | None = None
+                if "T" in start_str:
+                    try:
+                        time_portion = start_str.split("T")[1]
+                        # Strip timezone offset (e.g. "-7:00")
+                        time_clean = time_portion.split("-")[0].split("+")[0]
+                        t_parts = time_clean.split(":")
+                        start_time_val = time(int(t_parts[0]), int(t_parts[1]))
+                    except (ValueError, IndexError):
+                        pass
+                
                 # Sometimes it's 2026-6-21 instead of 2026-06-21
                 parts = date_part.split("-")
                 if len(parts) == 3:
@@ -71,6 +83,7 @@ class LaurelThirstAdapter(BaseSourceAdapter):
                         source_id=source_id,
                         headliner=headliner,
                         event_date=event_date,
+                        show_time=start_time_val,
                         venue="LaurelThirst Public House",
                         ticket_url=event_url,
                     )

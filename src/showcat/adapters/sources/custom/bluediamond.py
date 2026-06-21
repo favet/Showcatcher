@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, time
 from typing import Any
 
 import requests
@@ -35,8 +35,17 @@ class BlueDiamondAdapter(BaseSourceAdapter):
                 if not start_str:
                     continue
                     
-                # We only need the date part
-                event_date = datetime.strptime(start_str.split(" ")[0], "%Y-%m-%d").date()
+                # Parse date and time
+                date_time_parts = start_str.split(" ")
+                event_date = datetime.strptime(date_time_parts[0], "%Y-%m-%d").date()
+                
+                start_time_val: time | None = None
+                if len(date_time_parts) > 1:
+                    try:
+                        t_parts = date_time_parts[1].split(":")
+                        start_time_val = time(int(t_parts[0]), int(t_parts[1]))
+                    except (ValueError, IndexError):
+                        pass
                 
                 title = item.get("title", "")
                 if not title:
@@ -62,6 +71,7 @@ class BlueDiamondAdapter(BaseSourceAdapter):
                         source_id=source_id,
                         headliner=headliner,
                         event_date=event_date,
+                        show_time=start_time_val,
                         venue="Blue Diamond",
                         ticket_url=url,
                     )

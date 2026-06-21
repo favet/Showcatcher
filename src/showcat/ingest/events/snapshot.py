@@ -1,4 +1,4 @@
-﻿"""EventSnapshotStage — stores raw fetches, diffs snapshots, records changes.
+"""EventSnapshotStage — stores raw fetches, diffs snapshots, records changes.
 
 Change detection:
 - new_event: a source_id appears that was not in the previous snapshot
@@ -30,6 +30,8 @@ def _raw_event_to_dict(event: RawEvent) -> dict[str, Any]:
         "headliner": event.headliner,
         "openers": event.openers,
         "date": event.event_date.isoformat(),
+        "doors_time": event.doors_time.isoformat() if event.doors_time else None,
+        "show_time": event.show_time.isoformat() if event.show_time else None,
         "venue": event.venue,
         "on_sale_date": event.on_sale_date.isoformat() if event.on_sale_date else None,
         "ticket_url": event.ticket_url,
@@ -91,6 +93,8 @@ class EventSnapshotStage(BaseStage):
                     headliner=raw_event.headliner,
                     openers=raw_event.openers,
                     date=raw_event.event_date,
+                    doors_time=raw_event.doors_time,
+                    show_time=raw_event.show_time,
                     venue=raw_event.venue,
                     on_sale_date=raw_event.on_sale_date,
                     ticket_url=raw_event.ticket_url,
@@ -99,7 +103,12 @@ class EventSnapshotStage(BaseStage):
                 )
                 .on_conflict_do_update(
                     constraint="uq_events_source_id",
-                    set_={"last_seen": now, "openers": raw_event.openers},
+                    set_={
+                        "last_seen": now,
+                        "openers": raw_event.openers,
+                        "doors_time": raw_event.doors_time,
+                        "show_time": raw_event.show_time,
+                    },
                 )
             )
             session.execute(stmt)

@@ -22,6 +22,9 @@ REF = datetime(2026, 7, 1, tzinfo=UTC)
 
 
 def _seed_artist(session: Session, name: str, mbid: str | None = None) -> Artist:
+    existing = session.execute(select(Artist).where(Artist.raw_name == name)).scalar_one_or_none()
+    if existing is not None:
+        return existing
     now = datetime.now(UTC)
     artist = Artist(
         raw_name=name, mbid=mbid, resolved=mbid is not None,

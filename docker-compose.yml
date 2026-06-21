@@ -6,11 +6,13 @@ services:
     volumes:
       - .:/app
       - ../PDX Shows:/pdx_shows
+      - C:\website\showcat:/website_showcat
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/opener_dev
       - LOG_LEVEL=DEBUG
       - PYTHONPATH=src
       - SQLITE_DB_PATH=/pdx_shows/data/pdx.sqlite
+      - WEB_OUTPUT_DIR=/website_showcat
     env_file:
       - .env
     depends_on:

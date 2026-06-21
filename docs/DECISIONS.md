@@ -64,6 +64,11 @@ Format: `Dn — Title — Decision — Why — Status`.
 
 **Status:** Resolved. The current system relies on single-owner Spotify token credentials to refresh the public playlist, keeping consumer access 100% auth-free.
 
+### D16 — Web Output & Deployment (Local Caddy + Cloudflared) *(resolved Phase 7, 2026-06-21)*
+**Decision:** The static web output (`index.html`) and the live pipeline progress dashboard (`progress.json`) are written directly to `C:\website` on the owner's machine. They are served to the public internet via a local Caddy server coupled with a Cloudflare Tunnel (`cloudflared`).
+**Why:** This is the simplest possible continuous deployment pipeline. Because Showcat is a single-owner pipeline running on a local machine (D15), writing the build artifacts to a local directory synced to the internet eliminates the need for VPS provisioning, GitHub Actions, or remote server syncing. Changes are instantaneous and secure.
+**Status:** Firm. Implemented in Phase 7.
+
 ## Open questions (do not hardcode silently — resolve in the noted phase)
 
 ### D13 — Spotify account is Premium; live-write bridge path chosen *(resolved Phase 5, OQ1)*

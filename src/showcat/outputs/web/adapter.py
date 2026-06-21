@@ -89,18 +89,16 @@ def get_travel_times() -> dict[str, dict[str, Any]]:
         
     return times
 
-def _query_shows(session: Session, scoring_version: str, limit: int = 100) -> list[dict[str, Any]]:
+def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> list[dict[str, Any]]:
     today = dt.date.today()
     rows = (
         session.execute(
             select(Event, EventScore, EventMatch, Artist)
-            .join(EventScore, EventScore.event_id == Event.id)
-            .join(EventMatch, EventMatch.event_id == Event.id)
-            .join(Artist, Artist.id == EventMatch.artist_id)
-            .where(EventScore.scoring_version == scoring_version)
-            .where(EventMatch.status == "matched")
+            .outerjoin(EventScore, (EventScore.event_id == Event.id) & (EventScore.scoring_version == scoring_version))
+            .outerjoin(EventMatch, (EventMatch.event_id == Event.id) & (EventMatch.status == "matched"))
+            .outerjoin(Artist, Artist.id == EventMatch.artist_id)
             .where(Event.date >= today)
-            .order_by(EventScore.score_total.desc(), Event.date.asc())
+            .order_by(EventScore.score_total.desc().nulls_last(), Event.date.asc())
         )
         .unique()
         .all()
@@ -112,11 +110,13 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 100) -> li
     shows: list[dict[str, Any]] = []
     
     # Pre-fetch tags for all artists
-    artist_ids = [row[3].id for row in rows]
-    tags_rows = session.execute(
-        select(ArtistTag)
-        .where(ArtistTag.artist_id.in_(artist_ids))
-    ).scalars().all()
+    artist_ids = [row[3].id for row in rows if row[3] is not None]
+    tags_rows = []
+    if artist_ids:
+        tags_rows = session.execute(
+            select(ArtistTag)
+            .where(ArtistTag.artist_id.in_(artist_ids))
+        ).scalars().all()
     
     tags_by_artist = {}
     for t in tags_rows:
@@ -138,23 +138,48 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 100) -> li
                 travel_info = v
                 break
                 
-        genres = tags_by_artist.get(artist.id, [])
+        genres = tags_by_artist.get(artist.id, []) if artist else []
+        
+        def format_t(t: dt.time) -> str:
+            h = t.hour
+            m = t.minute
+            ampm = "AM" if h < 12 else "PM"
+            h12 = h if h <= 12 else h - 12
+            if h12 == 0:
+                h12 = 12
+            return f"{h12}:{m:02d} {ampm}"
+
+        doors_display = format_t(event.doors_time) if event.doors_time else None
+        show_display = format_t(event.show_time) if event.show_time else None
+        
+        # Determine exact timestamp for chronological sorting
+        sort_time = event.show_time or event.doors_time or dt.time()
+        timestamp = int(dt.datetime.combine(event.date, sort_time).timestamp())
+        
+        today = dt.date.today()
+        if event.date == today:
+            date_display = "TONIGHT"
+        elif event.date == today + dt.timedelta(days=1):
+            date_display = "TOMORROW"
+        else:
+            date_display = f"{event.date.strftime('%a %b')} {event.date.day}"
         
         shows.append(
             {
                 "id": event.id,
                 "headliner": event.headliner,
                 "venue": event.venue,
-                "capacity": get_venue_capacity(event.venue),
                 "date": event.date.isoformat(),
-                "date_display": f"{event.date.strftime('%a %b')} {event.date.day}, {event.date.year}",
+                "date_display": date_display,
+                "doors_display": doors_display,
+                "show_display": show_display,
                 "ticket_url": event.ticket_url,
-                "score_total": round(score.score_total, 3),
-                "matched_artist": artist.raw_name,
+                "score_total": round(score.score_total, 3) if score else None,
+                "matched_artist": artist.raw_name if artist else None,
                 "travel_minutes": travel_info["minutes"] if travel_info else None,
-                "travel_miles": travel_info["miles"] if travel_info else None,
                 "genres": genres,
-                "timestamp": int(dt.datetime.combine(event.date, dt.time()).timestamp())
+                "source": event.source,
+                "timestamp": timestamp
             }
         )
         if len(shows) >= limit:
@@ -170,321 +195,310 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
   <title>Showcat — Portland Music Discovery</title>
-  <meta name="description" content="Upcoming Portland shows weighted toward artists you haven't fully explored yet.">
-  
-  <!-- Force HTTPS -->
+  <meta name="description" content="Every upcoming Portland show, ranked by your taste.">
   <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
-  
-  <!-- Prevent browser caching of the HTML file so users always get the latest updates -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
     :root {{
-      --bg: #09090b;
-      --bg-gradient: radial-gradient(circle at top, #1e1330 0%, #09090b 60%);
-      --surface: rgba(20, 20, 25, 0.7);
-      --surface-hover: rgba(28, 28, 35, 0.9);
-      --accent: #10b981;
-      --accent-hover: #34d399;
-      --accent-glow: rgba(16, 185, 129, 0.15);
-      --text: #f4f4f5;
-      --muted: #a1a1aa;
-      --border: rgba(63, 63, 70, 0.5);
-      --border-hover: rgba(16, 185, 129, 0.4);
-      --font-display: 'Outfit', system-ui, -apple-system, sans-serif;
-      --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+      --bg: #121212; --surface: #1E1E24; --surface-hover: #26262d;
+      --text: #EBEBEB; --muted: #8A8D91; --border: #35353d;
+      --accent: #00F0FF; --accent-dim: rgba(0,240,255,0.12);
+      --amber: #FF0055; --amber-dim: rgba(255,0,85,0.12);
+      --font-body: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
     }}
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{
-      background-color: var(--bg);
-      background-image: var(--bg-gradient);
-      background-attachment: fixed;
-      color: var(--text);
-      font-family: var(--font-body);
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-      padding-bottom: 4rem;
+    * {{ box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }}
+    body {{ background: var(--bg); color: var(--text); font-family: var(--font-body); line-height: 1.4; -webkit-font-smoothing: antialiased; }}
+    a {{ color: var(--accent); text-decoration: none; }}
+    
+    header {{ padding: 1.5rem 1rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg); }}
+    .header-top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }}
+    header h1 {{ font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }}
+    header h1 span {{ color: var(--accent); }}
+    .header-actions button {{ background: none; border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.75rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer; margin-left: 0.5rem; }}
+    
+    .filters-bar {{ display: flex; gap: 0.5rem; }}
+    .filter-select {{ flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; outline: none; }}
+    .filter-btn {{ padding: 0.5rem 0.75rem; font-size: 0.85rem; font-weight: 500; background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; white-space: nowrap; }}
+    .filter-btn.active {{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 700; }}
+    
+    .layout {{ max-width: 800px; margin: 0 auto; padding-bottom: 3rem; }}
+
+    .sticky-date {{
+      position: sticky; top: 0; z-index: 9;
+      background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(8px);
+      padding: 0.5rem 1rem; border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.05em;
     }}
-    a {{ color: var(--accent); text-decoration: none; transition: color 0.2s ease; }}
-    a:hover {{ color: var(--accent-hover); }}
-    
-    header {{ max-width: 1000px; margin: 0 auto; padding: 3rem 1.5rem 2rem; text-align: center; }}
-    header h1 {{
-      font-family: var(--font-display); font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em;
-      margin-bottom: 0.5rem; background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+
+    .row-item {{
+      border-bottom: 1px solid var(--border); padding: 0.75rem 1rem;
+      cursor: pointer; transition: background 0.15s;
+      user-select: none; -webkit-user-select: none; touch-action: manipulation;
     }}
-    header p {{ color: var(--muted); font-size: 1rem; max-width: 600px; margin: 0 auto; }}
+    .row-item:hover {{ background: var(--surface); }}
+    .row-item.past {{ opacity: 0.4; }}
+
+    .row-core {{ display: grid; grid-template-columns: 4rem 1fr auto; gap: 0.75rem; align-items: flex-start; }}
+    .col-expand {{ font-size: 0.6rem; color: var(--muted); padding-top: 0.35rem; line-height: 1; opacity: 0.6; }}
     
-    .layout-grid {{
-      max-width: 1000px; margin: 0 auto; padding: 0 1.5rem;
-      display: grid; grid-template-columns: 1fr; gap: 2rem;
+    .col-time {{ font-family: var(--font-mono); font-size: 0.85rem; color: var(--accent); font-weight: 600; padding-top: 0.1rem; display: flex; flex-direction: column; gap: 0.2rem; }}
+    .time-label {{ font-size: 0.65rem; color: var(--muted); opacity: 0.8; margin-left: 0.2rem; }}
+    .col-time.soon {{ color: var(--amber); }}
+
+    .col-main {{ display: flex; flex-direction: column; gap: 0.15rem; }}
+    .headliner {{ font-size: 1.05rem; font-weight: 700; color: var(--text); line-height: 1.2; }}
+    .venue-info {{ font-size: 0.8rem; color: var(--muted); font-weight: 500; display: flex; align-items: center; gap: 0.4rem; }}
+
+    .row-expanded {{
+      margin-top: 0.75rem; margin-left: 4.75rem; padding-top: 0.75rem;
+      border-top: 1px dashed var(--border);
+      display: flex; flex-direction: column; gap: 0.5rem;
+      animation: slideDown 0.2s ease-out forwards;
     }}
-    @media (min-width: 768px) {{
-      .layout-grid {{ grid-template-columns: 280px 1fr; align-items: start; }}
-    }}
+    @keyframes slideDown {{ from {{ opacity: 0; transform: translateY(-5px); }} to {{ opacity: 1; transform: translateY(0); }} }}
     
-    .panel {{
-      background: var(--surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem;
-    }}
+    .drawer-tags {{ display: flex; flex-wrap: wrap; gap: 0.3rem; }}
+    .drawer-tag {{ font-size: 0.7rem; padding: 0.2rem 0.4rem; border-radius: 4px; background: var(--surface-hover); color: var(--muted); }}
     
-    .filters h3 {{ font-family: var(--font-display); margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }}
-    .filter-group {{ margin-bottom: 1.5rem; }}
-    .filter-group label {{ display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem; color: var(--muted); }}
+    .drawer-actions {{ display: flex; justify-content: space-between; align-items: center; margin-top: 0.25rem; }}
+    .ticket-btn {{ font-size: 0.8rem; font-weight: 600; color: var(--bg); background: var(--accent); padding: 0.35rem 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; }}
+    .travel-chip {{ font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); }}
+    .score-chip {{ font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent); background: var(--accent-dim); padding: 0.15rem 0.4rem; border-radius: 4px; }}
+
+    .empty {{ text-align: center; padding: 4rem 1rem; color: var(--muted); font-size: 0.9rem; }}
     
-    .checkbox-item {{ display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.9rem; cursor: pointer; }}
-    .checkbox-item input {{ accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }}
+    /* Modals */
+    .modal-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 40; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }}
+    .modal-overlay.open {{ opacity: 1; pointer-events: all; }}
+    .modal {{ background: var(--bg); border: 1px solid var(--border); width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto; border-radius: 12px; padding: 1.5rem; }}
+    .modal-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; position: sticky; top: -1.5rem; background: var(--bg); padding-bottom: 1rem; border-bottom: 1px solid var(--border); }}
+    .modal-close {{ background: none; border: none; color: var(--text); font-size: 1.5rem; cursor: pointer; }}
     
-    .timeline-container {{ display: flex; flex-direction: column; gap: 1rem; position: relative; }}
-    
-    .show-card {{
-      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-      padding: 1.25rem 1.5rem; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-      display: flex; flex-direction: column; gap: 0.75rem; position: relative;
-    }}
-    .show-card:hover {{
-      background: var(--surface-hover); border-color: var(--border-hover);
-      transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4), 0 0 15px var(--accent-glow);
-    }}
-    
-    .show-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }}
-    .show-headliner {{ font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: #fff; }}
-    .show-details {{ color: var(--muted); font-size: 0.9rem; margin-top: 0.15rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }}
-    
-    .venue-name {{ display: inline-flex; align-items: center; gap: 0.3rem; }}
-    .star-btn {{ background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.1rem; padding: 0; line-height: 1; transition: color 0.2s; }}
-    .star-btn:hover {{ color: #fbbf24; }}
-    .star-btn.active {{ color: #fbbf24; }}
-    
-    .score-badge {{
-      background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25);
-      border-radius: 8px; padding: 0.35rem 0.6rem; text-align: center; min-width: 50px;
-    }}
-    .score-num {{ font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--accent); }}
-    
-    .tags {{ display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }}
-    .tag {{ background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }}
-    
-    .travel-pill {{ background: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.2rem; }}
-    
-    .ticket-btn {{
-      background: var(--accent); color: #09090b; font-weight: 600; font-size: 0.85rem;
-      padding: 0.4rem 0.9rem; border-radius: 6px; display: inline-block; margin-top: 0.5rem;
-    }}
-    .ticket-btn:hover {{ background: var(--accent-hover); }}
-    
-    .drawer-overlay {{
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
-      z-index: 40; opacity: 0; pointer-events: none; transition: opacity 0.3s;
-    }}
-    .drawer-overlay.open {{ opacity: 1; pointer-events: all; }}
-    
-    .drawer {{
-      position: fixed; top: 0; right: -400px; width: 100%; max-width: 400px; height: 100vh;
-      background: #09090b; border-left: 1px solid var(--border); z-index: 50;
-      transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding: 1.5rem; display: flex; flex-direction: column;
-    }}
-    .drawer.open {{ right: 0; }}
-    .drawer-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }}
-    .drawer-close {{ background: none; border: none; color: var(--text); font-size: 1.5rem; cursor: pointer; }}
-    
-    .drawer-btn {{ background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 500; margin-bottom: 1rem; }}
-    .drawer-btn:hover {{ background: var(--surface-hover); border-color: var(--border-hover); }}
-    
-    .empty-state {{ text-align: center; padding: 3rem; color: var(--muted); }}
-    
+    .venue-search {{ width: 100%; padding: 0.5rem 0.6rem; font-size: 0.85rem; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; outline: none; margin-bottom: 0.75rem; }}
+    .venue-search:focus {{ border-color: var(--accent); }}
+    .venue-section-label {{ font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 0.5rem 0 0.25rem; }}
+    .venue-list {{ display: flex; flex-direction: column; gap: 0.25rem; }}
+    .venue-row {{ display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; padding: 0.4rem 0; cursor: pointer; }}
+    .venue-row input {{ accent-color: var(--accent); width: 16px; height: 16px; flex-shrink: 0; }}
+    .modal-fav-actions {{ display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }}
+    .modal-fav-actions button {{ flex: 1; padding: 0.35rem 0; font-size: 0.75rem; background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }}
   </style>
 </head>
 <body>
   <div id="app">
     <header>
-      <h1>Show<span>cat</span></h1>
-      <p>Chronological timeline of top recommended Portland shows.</p>
-    </header>
-    
-    <div class="layout-grid">
-      <!-- Filters Sidebar -->
-      <aside class="panel filters">
-        <h3>Filters</h3>
-        
-        <div class="filter-group">
-          <label>Favorites</label>
-          <label class="checkbox-item">
-            <input type="checkbox" v-model="filters.favoritesOnly">
-            Show only starred venues ({{{{ favoriteVenues.length }}}})
-          </label>
+      <div class="header-top">
+        <h1>Show<span>cat</span></h1>
+        <div class="header-actions">
+          <button @click="favsOpen = true">Venue Favs</button>
+          <button @click="playlistOpen = true">🎵 Playlist</button>
         </div>
-        
-        <div class="filter-group">
-          <label>Max Travel Time (from Home)</label>
-          <input type="range" v-model="filters.maxTravelMins" min="5" max="60" step="5" style="width:100%">
-          <div style="text-align:right; font-size:0.8rem; color:var(--muted)">
-            {{{{ filters.maxTravelMins }}}} mins
-          </div>
-        </div>
-        
-        <div class="filter-group">
-          <label>Venue Size</label>
-          <label class="checkbox-item"><input type="checkbox" value="small" v-model="filters.sizes"> Small (&lt;300)</label>
-          <label class="checkbox-item"><input type="checkbox" value="mid" v-model="filters.sizes"> Mid (300-1000)</label>
-          <label class="checkbox-item"><input type="checkbox" value="large" v-model="filters.sizes"> Large (&gt;1000)</label>
-        </div>
-        
-        <div class="filter-group">
-          <label>Sort By</label>
-          <select v-model="filters.sortBy" style="width:100%; padding:0.4rem; background:rgba(255,255,255,0.05); color:white; border:1px solid var(--border); border-radius:4px;">
-            <option value="date">Chronological (Date)</option>
-            <option value="score">Top Score</option>
-          </select>
-        </div>
-        
-        <button class="drawer-btn" style="width:100%" @click="drawerOpen = true">
-          🎵 Open Spotify Playlist
+      </div>
+      <div class="filters-bar">
+        <select class="filter-select" v-model="filters.connection">
+          <option value="all">All Shows Chronological</option>
+          <option value="recommended">Top Picks (Connected to Taste)</option>
+        </select>
+        <button class="filter-btn" :class="{{active: filters.favoritesOnly}}" @click="filters.favoritesOnly = !filters.favoritesOnly">
+          {{{{ filters.favoritesOnly ? '★ Favs Only' : '☆ Venues' }}}}
         </button>
-      </aside>
+      </div>
+    </header>
 
-      <!-- Timeline -->
-      <main class="timeline-container">
-        <div style="font-size:0.9rem; color:var(--muted); margin-bottom:0.5rem">
-          Showing {{{{ filteredShows.length }}}} of {{{{ shows.length }}}} upcoming shows
-        </div>
+    <div class="layout">
+      <div v-if="filteredShows.length === 0" class="empty">No shows match your filters.</div>
+      
+      <div v-for="group in groupedShows" :key="group.date">
+        <div class="sticky-date">{{{{ group.date }}}}</div>
         
-        <div v-if="filteredShows.length === 0" class="empty-state">
-          No shows match your filters. Try adjusting them.
-        </div>
-        
-        <article v-for="show in filteredShows" :key="show.id" class="show-card">
-          <div class="show-header">
-            <div>
-              <h2 class="show-headliner">{{{{ show.headliner }}}}</h2>
-              <div class="show-details">
-                <span>{{{{ show.date_display }}}}</span>
-                <span>&bull;</span>
-                <span class="venue-name">
-                  {{{{ show.venue }}}}
-                  <button class="star-btn" :class="{{active: isFavorite(show.venue)}}" @click="toggleFavorite(show.venue)" title="Toggle Favorite">
-                    ★
-                  </button>
-                </span>
-                <span v-if="show.travel_minutes" class="travel-pill">
-                  🚗 {{{{ show.travel_minutes }}}} min
-                </span>
+        <div v-for="show in group.shows" :key="show.id" :data-row-id="show.id" class="row-item" :class="{{ past: isPast(show.timestamp) }}" @click="toggleExpand(show.id)">
+          <div class="row-core">
+            <div class="col-time" :class="{{ soon: isSoon(show.timestamp) }}">
+              <div v-if="show.doors_display">
+                {{{{ formatTime(show.doors_display) }}}}<span class="time-label">d</span>
+              </div>
+              <div v-if="show.show_display">
+                {{{{ formatTime(show.show_display) }}}}<span class="time-label">s</span>
+              </div>
+              <div v-if="!show.doors_display && !show.show_display">TBA</div>
+            </div>
+            <div class="col-main">
+              <div class="headliner">{{{{ show.headliner }}}}</div>
+              <div class="venue-info">
+                {{{{ show.venue }}}}
+                <span v-if="show.score_total !== null" class="score-chip">{{{{ show.score_total.toFixed(2) }}}}</span>
               </div>
             </div>
-            <div class="score-badge" title="Discovery Score">
-              <span class="score-num">{{{{ show.score_total.toFixed(1) }}}}</span>
-            </div>
+            <div class="col-expand">{{{{ expandedRow === show.id ? '▲' : '▾' }}}}</div>
           </div>
           
-          <div>
-            <div style="font-size:0.85rem; color:var(--muted)">Matched via <strong>{{{{ show.matched_artist }}}}</strong></div>
-            <div class="tags" v-if="show.genres && show.genres.length">
-              <span class="tag" v-for="g in show.genres">{{{{ g }}}}</span>
+          <div class="row-expanded" v-if="expandedRow === show.id">
+            <div class="drawer-tags" v-if="show.genres && show.genres.length">
+              <span class="drawer-tag" v-for="g in show.genres.slice(0,4)">{{{{ g }}}}</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem;" v-if="show.matched_artist">
+              Matched via {{{{ show.matched_artist }}}}
+            </div>
+            <div class="drawer-actions">
+              <span class="travel-chip" v-if="show.travel_minutes">{{{{ show.travel_minutes }}}}m drive</span>
+              <span v-else></span>
+              <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" class="ticket-btn" @click.stop>Tickets &rarr;</a>
             </div>
           </div>
-          
-          <div>
-            <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" class="ticket-btn">Get tickets &rarr;</a>
-          </div>
-        </article>
-      </main>
-    </div>
-    
-    <!-- Spotify Drawer -->
-    <div class="drawer-overlay" :class="{{open: drawerOpen}}" @click="drawerOpen = false"></div>
-    <div class="drawer" :class="{{open: drawerOpen}}">
-      <div class="drawer-header">
-        <h3 style="font-family:var(--font-display)">Discovery Playlist</h3>
-        <button class="drawer-close" @click="drawerOpen = false">&times;</button>
+        </div>
       </div>
-      <iframe style="border-radius:12px; flex-grow:1" src="https://open.spotify.com/embed/playlist/{SPOTIFY_PLAYLIST_ID}?utm_source=generator&theme=0" width="100%" height="100%" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" v-if="drawerOpen"></iframe>
     </div>
-    
-    <footer style="text-align:center; padding: 2rem; color:var(--muted); font-size:0.85rem; margin-top:2rem; border-top:1px solid var(--border)">
-      Generated {ts} &middot; Taste from <a href="https://www.last.fm/user/j-m-f" target="_blank">Last.fm</a>
-    </footer>
+
+    <!-- Favorites Modal -->
+    <div class="modal-overlay" :class="{{open: favsOpen}}" @click="favsOpen = false">
+      <div class="modal" @click.stop>
+        <div class="modal-header">
+          <h3 style="font-size:1rem;">Favorite Venues</h3>
+          <button class="modal-close" @click="favsOpen = false">&times;</button>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem;">Select venues you frequent. Use <strong>★ Favs Only</strong> to filter the list.</p>
+        <input class="venue-search" type="text" v-model="venueSearch" placeholder="Search venues…" autocomplete="off">
+        <div class="modal-fav-actions">
+          <button @click="favoriteVenues = [...allVenues]">Select all</button>
+          <button @click="favoriteVenues = []">Clear all</button>
+        </div>
+        <div class="venue-list">
+          <template v-for="group in groupedVenueOptions" :key="group.letter">
+            <div class="venue-section-label" v-if="group.venues.length">{{{{ group.letter }}}}</div>
+            <label class="venue-row" v-for="venue in group.venues" :key="venue">
+              <input type="checkbox" :value="venue" v-model="favoriteVenues">
+              {{{{ venue }}}}
+            </label>
+          </template>
+          <div v-if="filteredVenuesForModal.length === 0" style="font-size:0.85rem; color:var(--muted); padding:0.5rem 0;">No venues match.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Playlist Modal -->
+    <div class="modal-overlay" :class="{{open: playlistOpen}}" @click="playlistOpen = false">
+      <div class="modal" @click.stop>
+        <div class="modal-header">
+          <h3 style="font-size:1rem;">Discovery Playlist</h3>
+          <button class="modal-close" @click="playlistOpen = false">&times;</button>
+        </div>
+        <iframe style="border-radius:12px;" src="https://open.spotify.com/embed/playlist/{os.environ.get('SPOTIFY_PLAYLIST_ID', '')}?utm_source=generator&theme=0" width="100%" height="352" frameBorder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" v-if="playlistOpen"></iframe>
+      </div>
+    </div>
   </div>
 
   <script>
     const rawShows = {shows_json};
-    
-    const {{ createApp, ref, computed, watch, onMounted }} = Vue;
-
+    const {{ createApp, ref, computed, watch, onMounted, onUnmounted, nextTick }} = Vue;
     createApp({{
       setup() {{
         const shows = ref(rawShows);
-        const drawerOpen = ref(false);
-        
-        const filters = ref({{
-          favoritesOnly: false,
-          maxTravelMins: 60,
-          sizes: ['small', 'mid', 'large'],
-          sortBy: 'date'
-        }});
-        
+        const expandedRow = ref(null);
+        const playlistOpen = ref(false);
+        const favsOpen = ref(false);
+        const filters = ref({{ connection: 'all', favoritesOnly: false }});
         const favoriteVenues = ref([]);
+        const venueSearch = ref('');
+        const now = ref(Date.now() / 1000);
         
-        onMounted(() => {{
-          const saved = localStorage.getItem('showcat-favorites');
-          if (saved) {{
-            favoriteVenues.value = JSON.parse(saved);
-          }}
+        // Extract all unique venues
+        const allVenues = computed(() => {{
+          const v = new Set(shows.value.map(s => s.venue));
+          return Array.from(v).sort();
+        }});
+
+        // Modal venue list filtered by search
+        const filteredVenuesForModal = computed(() => {{
+          const q = venueSearch.value.toLowerCase().trim();
+          if (!q) return allVenues.value;
+          return allVenues.value.filter(v => v.toLowerCase().includes(q));
+        }});
+
+        // Alphabetical groups for modal
+        const groupedVenueOptions = computed(() => {{
+          const letters = {{}};
+          filteredVenuesForModal.value.forEach(v => {{
+            const l = v[0].toUpperCase();
+            if (!letters[l]) letters[l] = [];
+            letters[l].push(v);
+          }});
+          return Object.keys(letters).sort().map(l => ({{ letter: l, venues: letters[l] }}));
         }});
         
-        watch(favoriteVenues, (newVals) => {{
-          localStorage.setItem('showcat-favorites', JSON.stringify(newVals));
-        }}, {{ deep: true }});
+        let timer;
+        onMounted(() => {{ 
+          const s = localStorage.getItem('showcat-favorites'); 
+          if (s) favoriteVenues.value = JSON.parse(s); 
+          timer = setInterval(() => {{ now.value = Date.now() / 1000; }}, 60000);
+        }});
+        onUnmounted(() => clearInterval(timer));
+
+        watch(favoriteVenues, (v) => {{ localStorage.setItem('showcat-favorites', JSON.stringify(v)); }}, {{ deep: true }});
         
-        const isFavorite = (venue) => favoriteVenues.value.includes(venue);
-        
-        const toggleFavorite = (venue) => {{
-          if (isFavorite(venue)) {{
-            favoriteVenues.value = favoriteVenues.value.filter(v => v !== venue);
-          }} else {{
-            favoriteVenues.value.push(venue);
+        const toggleExpand = async (id) => {{
+          if (expandedRow.value === id) {{ expandedRow.value = null; return; }}
+          expandedRow.value = id;
+          await nextTick();
+          // If the expanded drawer is below the visible viewport, scroll it into view.
+          const drawer = document.querySelector(`[data-row-id="${{id}}"] .row-expanded`);
+          if (drawer) {{
+            const rect = drawer.getBoundingClientRect();
+            if (rect.bottom > window.innerHeight - 12) {{
+              drawer.scrollIntoView({{ block: 'nearest', behavior: 'smooth' }});
+            }}
           }}
         }};
-        
+
+        const formatTime = (t) => {{
+          if (!t) return '';
+          return t.replace(/^0/, '').replace(' PM', 'p').replace(' AM', 'a');
+        }};
+
+        const isPast = (ts) => ts < now.value - 7200; // 2 hours after start time
+        const isSoon = (ts) => ts > now.value && ts < now.value + 7200;
+
         const filteredShows = computed(() => {{
-          let result = shows.value.filter(show => {{
-            // Travel time filter
-            if (show.travel_minutes && show.travel_minutes > filters.value.maxTravelMins) return false;
-            
-            // Size filter
-            if (!filters.value.sizes.includes(show.capacity)) return false;
-            
-            // Favorites filter
-            if (filters.value.favoritesOnly && !isFavorite(show.venue)) return false;
-            
+          let r = shows.value.filter(s => {{
+            if (filters.value.connection === 'recommended' && s.score_total === null) return false;
+            if (filters.value.favoritesOnly && !favoriteVenues.value.includes(s.venue)) return false;
             return true;
           }});
-          
-          if (filters.value.sortBy === 'date') {{
-            result.sort((a, b) => a.timestamp - b.timestamp);
-          }} else {{
-            result.sort((a, b) => b.score_total - a.score_total);
-          }}
-          
-          return result;
+          // ALWAYS sort chronologically now.
+          r.sort((a, b) => a.timestamp - b.timestamp);
+          return r;
         }});
-        
+
+        const groupedShows = computed(() => {{
+          const groups = {{}};
+          filteredShows.value.forEach(s => {{
+            const d = s.date_display;
+            if (!groups[d]) groups[d] = [];
+            groups[d].push(s);
+          }});
+          return Object.keys(groups).map(k => ({{ date: k, shows: groups[k] }}));
+        }});
+
         return {{
-          shows, filters, filteredShows, drawerOpen,
-          favoriteVenues, isFavorite, toggleFavorite
-        }}
+          shows, filters, filteredShows, groupedShows, allVenues, expandedRow,
+          playlistOpen, favsOpen, favoriteVenues, venueSearch, filteredVenuesForModal,
+          groupedVenueOptions, toggleExpand, formatTime, isPast, isSoon
+        }};
       }}
     }}).mount('#app');
   </script>
 </body>
 </html>"""
+
 
 
 class WebOutputAdapter(BaseOutputAdapter):

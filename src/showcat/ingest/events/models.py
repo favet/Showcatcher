@@ -1,8 +1,8 @@
-﻿"""ORM models for Phase 2 event-ingest tables."""
+"""ORM models for Phase 2 event-ingest tables."""
 import datetime as dt
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Integer, String, Text, Time, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,6 +23,8 @@ class Event(Base):
     headliner: Mapped[str] = mapped_column(String(500), nullable=False)
     openers: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    doors_time: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
+    show_time: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     venue: Mapped[str] = mapped_column(String(255), nullable=False)
     on_sale_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     ticket_url: Mapped[str | None] = mapped_column(Text, nullable=True)

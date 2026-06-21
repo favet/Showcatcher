@@ -91,3 +91,29 @@ Observability is built in Phase 0, before any feature, so everything inherits it
 | Venue sources | upcoming shows | silent layout change; zero results | contract tests, anomaly alerts, dead-letter |
 | Spotify API | URI resolution, playlist write | further endpoint removal; Premium/dev-mode gate | adapter + export-file fallback; selection kept on Last.fm |
 | Valhalla ETA map | distance bands | static, low risk | computed once per venue at registration |
+
+## Deployment & Live Hosting (Local Web Server)
+
+The `showcat.favet.net` website is hosted **locally** on this Windows machine and tunneled to the internet. 
+
+**Infrastructure:**
+- **Document Root**: `C:\website`
+- **Web Server**: `Caddy` running as a Windows Service, bound to port 80 and serving `C:\website` as a `file_server`.
+- **Tunneling**: `Cloudflared` running as a Windows Service, exposing the local Caddy web server to the public `showcat.favet.net` domain securely.
+
+**Deployment Process ("Pushing Live"):**
+The GitHub repository (`favet/showcat`) is the source of truth for the *codebase*, but **pushing code to GitHub does not deploy the website**.
+
+To push website updates live:
+1. Generate the static HTML using the backend tool:
+   ```bash
+   docker compose run --rm app python -m showcat.cli.web
+   ```
+   *This writes the generated HTML to `public/index.html` inside the project directory.*
+2. Copy the generated file to the active Caddy document root:
+   ```powershell
+   Copy-Item C:\Users\Justin\Documents\SHOWCATCHER\public\index.html C:\website\showcat\index.html -Force
+   ```
+   *(Any changes copied to `C:\website\showcat\` are instantly live on the internet.)*
+
+> **For Future Sessions:** When making frontend changes or updating the generated timeline, always execute both steps. Do not assume the live site updates from `public/index.html` automatically or from GitHub commits.
