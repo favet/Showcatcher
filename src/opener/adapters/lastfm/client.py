@@ -11,6 +11,11 @@ LASTFM_API_BASE = "https://ws.audioscrobbler.com/2.0/"
 # Last.fm terms: max 5 requests/second for most endpoints.
 # We stay conservative at 4/s (250 ms between calls).
 MIN_INTERVAL_SECONDS = 0.25
+# Transient-failure handling: Last.fm intermittently returns 5xx during deep
+# pagination. Retry those (and connection errors) with exponential backoff so a
+# single hiccup doesn't abort a long backfill.
+MAX_RETRIES = 5
+RETRY_BACKOFF_BASE = 0.5
 
 
 class LastFmError(Exception):
@@ -32,27 +37,48 @@ class LastFmClient:
         self._last_call_at: float = 0.0
 
     def _get(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Execute a rate-limited GET against the Last.fm API."""
-        # Rate limiting — enforce minimum gap between requests
-        elapsed = time.monotonic() - self._last_call_at
-        if elapsed < MIN_INTERVAL_SECONDS:
-            time.sleep(MIN_INTERVAL_SECONDS - elapsed)
-
+        """Execute a rate-limited GET against the Last.fm API, retrying 5xx/connection errors."""
         full_params = {
             "api_key": self.api_key,
             "format": "json",
             **params,
         }
-        self._last_call_at = time.monotonic()
-        response = self._session.get(LASTFM_API_BASE, params=full_params, timeout=30)
-        response.raise_for_status()
-        data: dict[str, Any] = response.json()
 
-        if "error" in data:
-            raise LastFmError(
-                f"Last.fm API error {data['error']}: {data.get('message', 'unknown')}"
-            )
-        return data
+        last_exc: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            # Rate limiting — enforce minimum gap between requests
+            elapsed = time.monotonic() - self._last_call_at
+            if elapsed < MIN_INTERVAL_SECONDS:
+                time.sleep(MIN_INTERVAL_SECONDS - elapsed)
+            self._last_call_at = time.monotonic()
+
+            try:
+                response = self._session.get(LASTFM_API_BASE, params=full_params, timeout=30)
+                response.raise_for_status()
+                data: dict[str, Any] = response.json()
+                if "error" in data:
+                    raise LastFmError(
+                        f"Last.fm API error {data['error']}: {data.get('message', 'unknown')}"
+                    )
+                return data
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+                last_exc = exc
+            except requests.exceptions.HTTPError as exc:
+                status = exc.response.status_code if exc.response is not None else None
+                if status is None or status < 500:
+                    raise  # 4xx (bad key/params) won't fix on retry
+                last_exc = exc
+
+            if attempt < MAX_RETRIES - 1:
+                backoff = RETRY_BACKOFF_BASE * (2**attempt)
+                logger.warning(
+                    "Last.fm request failed; retrying",
+                    extra={"attempt": attempt + 1, "backoff_s": backoff, "error": str(last_exc)},
+                )
+                time.sleep(backoff)
+
+        assert last_exc is not None
+        raise last_exc
 
     def get_user_info(self) -> dict[str, Any]:
         """Return user profile including total scrobble count for reconciliation."""

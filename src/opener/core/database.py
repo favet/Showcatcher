@@ -15,8 +15,12 @@ DATABASE_URL = os.environ.get(
 # Create the SQLAlchemy engine
 engine = create_engine(DATABASE_URL)
 
-# Configure the sessionmaker
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Configure the sessionmaker. expire_on_commit=False so a returned ORM object
+# (e.g. the RunLedger from BaseStage.run) stays readable after its session
+# closes — otherwise attribute access on the detached instance raises.
+SessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
+)
 
 # Declarative Base for models using modern SQLAlchemy 2.0 class declarations
 class Base(DeclarativeBase):

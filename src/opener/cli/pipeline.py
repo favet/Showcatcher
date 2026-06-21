@@ -17,12 +17,28 @@ import time
 from datetime import UTC, datetime, timedelta
 
 from opener.adapters.sources.ticketmaster.adapter import TicketmasterAdapter
+from opener.core.base import BaseStage
+from opener.core.database import RunLedger
 from opener.ingest.events.snapshot import EventSnapshotStage
 from opener.ingest.history.backfill import HistoryBackfillStage
 from opener.ingest.history.mbid_resolve import MbidResolveStage
 from opener.ingest.history.tag_ingest import ArtistTagStage
 from opener.resolve.stage import ResolveStage
 from opener.score.stage import ScoreStage
+
+
+class PipelineError(RuntimeError):
+    """Raised when a stage in the pipeline fails (so the run stops loudly)."""
+
+
+def _run_stage(stage: BaseStage, **kwargs: object) -> int:
+    """Run a stage and stop the pipeline if it failed (failure routes to dead_letter)."""
+    record: RunLedger = stage.run(**kwargs)
+    if record.status != "completed":
+        raise PipelineError(
+            f"Stage {stage.stage_name} failed: {record.error_message}"
+        )
+    return record.records_processed or 0
 
 
 def run_pipeline(
@@ -43,31 +59,29 @@ def run_pipeline(
     if backfill_days is not None:
         since_ts = int((datetime.now(UTC) - timedelta(days=backfill_days)).timestamp())
 
-    steps: list[tuple[str, object]] = []
+    steps: list[tuple[str, int]] = []
+    total = 6 if resolve_mbids else 5
 
-    print(f"[1/{6 if resolve_mbids else 5}] Backfilling Last.fm history...")
-    r = HistoryBackfillStage().run(since_ts=since_ts) if since_ts else HistoryBackfillStage().run()
-    steps.append(("backfill scrobbles", r.records_processed))
+    print(f"[1/{total}] Backfilling Last.fm history...")
+    backfill_kwargs = {"since_ts": since_ts} if since_ts else {}
+    steps.append(("backfill scrobbles", _run_stage(HistoryBackfillStage(), **backfill_kwargs)))
 
     if resolve_mbids:
         print("[2/6] Resolving artist MBIDs...")
-        steps.append(("mbids resolved", MbidResolveStage().run().records_processed))
+        steps.append(("mbids resolved", _run_stage(MbidResolveStage())))
 
     n = len(steps) + 1
-    total = 6 if resolve_mbids else 5
     print(f"[{n}/{total}] Ingesting Ticketmaster events...")
-    events_run = EventSnapshotStage(TicketmasterAdapter()).run()
-    steps.append(("event changes", events_run.records_processed))
+    steps.append(("event changes", _run_stage(EventSnapshotStage(TicketmasterAdapter()))))
 
     print(f"[{n + 1}/{total}] Resolving event artists to taste...")
-    steps.append(("artist matches", ResolveStage().run().records_processed))
+    steps.append(("artist matches", _run_stage(ResolveStage())))
 
     print(f"[{n + 2}/{total}] Fetching tags for matched artists...")
-    steps.append(("tag rows", ArtistTagStage(matched_only=True).run().records_processed))
+    steps.append(("tag rows", _run_stage(ArtistTagStage(matched_only=True))))
 
     print(f"[{n + 3}/{total}] Scoring shows ({scoring_version})...")
-    score_run = ScoreStage(scoring_version=scoring_version).run()
-    steps.append(("scored shows", score_run.records_processed))
+    steps.append(("scored shows", _run_stage(ScoreStage(scoring_version=scoring_version))))
 
     print("\nDone. Summary:")
     for label, count in steps:

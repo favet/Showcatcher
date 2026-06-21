@@ -50,6 +50,69 @@ def _make_client_from_fixture(fixture_name: str, monkeypatch: pytest.MonkeyPatch
 # ---------------------------------------------------------------------------
 
 
+class TestClientRetry:
+    def test_retries_transient_5xx_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A 500 then a 200 should succeed after one retry (no backoff sleep in test)."""
+        import requests
+
+        from opener.adapters.lastfm import client as client_mod
+
+        monkeypatch.setattr(client_mod.time, "sleep", lambda _s: None)
+        client = LastFmClient(api_key="fake", user="testuser")
+
+        calls = {"n": 0}
+
+        class Resp:
+            def __init__(self, status: int) -> None:
+                self.status_code = status
+
+            def raise_for_status(self) -> None:
+                if self.status_code >= 500:
+                    err = requests.exceptions.HTTPError("500 Server Error")
+                    err.response = self  # type: ignore[assignment]
+                    raise err
+
+            def json(self) -> dict[str, Any]:
+                return {"ok": True}
+
+        def fake_get(*_a: Any, **_k: Any) -> Resp:
+            calls["n"] += 1
+            return Resp(500 if calls["n"] == 1 else 200)
+
+        monkeypatch.setattr(client._session, "get", fake_get)
+        assert client._get({"method": "x"}) == {"ok": True}
+        assert calls["n"] == 2  # first failed, second succeeded
+
+    def test_does_not_retry_4xx(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import requests
+
+        client = LastFmClient(api_key="fake", user="testuser")
+
+        class Resp:
+            status_code = 403
+
+            def raise_for_status(self) -> None:
+                err = requests.exceptions.HTTPError("403")
+                err.response = self  # type: ignore[assignment]
+                raise err
+
+            def json(self) -> dict[str, Any]:
+                return {}
+
+        calls = {"n": 0}
+
+        def fake_get(*_a: Any, **_k: Any) -> Resp:
+            calls["n"] += 1
+            return Resp()
+
+        monkeypatch.setattr(client._session, "get", fake_get)
+        with pytest.raises(requests.exceptions.HTTPError):
+            client._get({"method": "x"})
+        assert calls["n"] == 1  # 4xx is not retried
+
+
 class TestParseScrobble:
     def test_parses_normal_track(self) -> None:
         fixture = load_fixture("recent_tracks_page1.json")
