@@ -46,6 +46,12 @@ Format: `Dn — Title — Decision — Why — Status`.
 **Why:** The offline ETA map already exists; venue coordinates are static, so this is cheap "icing."
 **Status:** Firm. Band thresholds are tunable.
 
+### D17 — De-Ticketmaster: prefer venue-direct ticket links *(resolved Phase 8, 2026-06-21)*
+**Decision:** Visitors should not be sent to Ticketmaster when a venue-direct option exists. Ticketmaster stays a **discovery safety-net** (so genuinely TM-only shows still appear), but the **link shown** is the most-preferred non-TM, event-specific URL. Preference order (higher wins): named non-TM ticketers (Etix, Dice, Eventbrite, TicketWeb, …) > the venue's own site > Ticketmaster (last resort) > unknown. Each ticket button shows its provider ("Tickets via Etix →"); the rare TM-only case is styled muted.
+**Key finding:** Portland's dedicated music venues almost universally ticket through **Etix** (verified live 2026-06-21: Crystal, Aladdin, Roseland, Hawthorne, Mississippi Studios, Polaris, Holocene, Alberta Rose). Ticketmaster's Discovery API merely aggregates/resells them. So the planned per-platform Dice/Eventbrite adapters are largely unnecessary — venue-direct scrapers yield Etix links natively.
+**How:** `showcat.adapters.tickets.providers` classifies a URL → provider and ranks providers; `Event.ticket_provider` is persisted at ingest; per-venue scrapers (e.g. `AladdinAdapter`) discover shows with their real Etix links; the web output collapses the TM + venue-direct duplicates by canonical key (normalised venue+date+headliner) and picks the best link.
+**Status:** Framework complete (8.0–8.5). Venue-direct scraper coverage is additive and ongoing — Aladdin first; True West cluster (Mississippi/Polaris/Rev Hall), Hawthorne, and JS-rendered Wonder/Doug Fir are follow-on (see VENUES.md).
+
 ### D15 — Auth model: single-owner pipeline, zero-auth consumers *(resolved Phase 6, 2026-06-21)*
 **Decision:** Showcat is a **single-owner pipeline** to minimize authentication friction. The pipeline owner (Justin) runs the backend pipeline using their credentials. Consumers (visitors) need **zero authentication** to use the application or consume its outputs.
 

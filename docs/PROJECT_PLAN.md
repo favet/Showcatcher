@@ -201,6 +201,32 @@ A unit of work is done only when **all** of these are true:
 
 ---
 
+## Phase 8 — De-Ticketmaster the Ticket Links
+
+**Goal:** Stop sending visitors to Ticketmaster when a venue-direct option exists. Prefer event-specific non-TM links (overwhelmingly **Etix** in Portland), keep TM only as a discovery safety-net + last-resort link, and show each link's provider. See D17.
+
+### Sub-phases
+- **8.0 Test-DB Isolation** — Suite runs against a dedicated `*_test` database (auto-created), never prod. Fixes the data-loss bug where `conftest` `drop_all` wiped production tables on every full run.
+- **8.1 Ticket-Provider Model** — `adapters.tickets.providers` (classify URL → provider, rank preference, `best_link`, label) + persisted `Event.ticket_provider` (migration `phase8_ticket_provider`), classified at ingest.
+- **8.2 Venue Ticketer Truth** — Correct `VENUES.md`: Etix is near-universal (verified live), not the previously-listed TM/Dice/Eventbrite.
+- **8.3 Venue-Direct Scrapers** — Per-venue site scrapers yielding event-specific Etix links (Aladdin first; additive thereafter). TM kept as discovery safety-net.
+- **8.4 Cross-Source Merge** — Collapse TM + venue-direct duplicates by canonical key (normalised venue+date+headliner); the non-TM link wins.
+- **8.5 Provider Badge** — Web button shows "Tickets via Etix →"; muted style for the rare TM-only case.
+- **8.6 Repopulate + Deploy** — Re-run the pipeline (with new adapters) to rebuild data and regenerate/deploy `index.html` to `C:\website`.
+
+### Exit Gate 8 (provable)
+- [x] Test suite runs on an isolated `*_test` DB; prod untouched. *(Proven by `tests/test_db_isolation.py`; 119 passed, prod `opener_dev` intact)*
+- [x] Provider classifier + ranking + persisted `ticket_provider`. *(Proven by `tests/test_ticket_providers.py`, 14 tests)*
+- [x] `VENUES.md` ticketer column reflects verified reality (Etix). *(Proven by live venue-site checks 2026-06-21)*
+- [x] ≥1 venue-direct scraper yields non-TM (Etix) links. *(Proven by `tests/test_venue_adapters.py` — Aladdin, 6 Etix events)*
+- [x] Same show across sources merges to one card preferring the non-TM link. *(Proven by `tests/test_web_merge.py`)*
+- [x] Rendered page shows the provider badge. *(Proven by `tests/test_web_render.py`)*
+- [ ] Live site shows non-TM providers on covered venues' shows. *(Pending 8.6 repopulate + deploy)*
+
+> **Scope note:** 8.3 venue coverage is intentionally incremental (zero core edits per new adapter). Aladdin shipped; True West cluster (Mississippi Studios / Polaris / Revolution Hall — shared `events-feed` calendar markup), Hawthorne, and JS-rendered Wonder / Doug Fir (need their JSON endpoints) are tracked follow-on in `VENUES.md`.
+
+---
+
 ## Phase dependency summary
 
 ```
