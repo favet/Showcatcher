@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
+from showcat.adapters.tickets.providers import classify_provider
 from showcat.core.base import BaseStage
 from showcat.ingest.events.models import Event, EventChange, EventSnapshot
 
@@ -84,6 +85,7 @@ class EventSnapshotStage(BaseStage):
         changes_recorded = 0
 
         for raw_event in current_events:
+            ticket_provider = classify_provider(raw_event.ticket_url)
             # Upsert the event row
             stmt = (
                 pg_insert(Event)
@@ -98,6 +100,7 @@ class EventSnapshotStage(BaseStage):
                     venue=raw_event.venue,
                     on_sale_date=raw_event.on_sale_date,
                     ticket_url=raw_event.ticket_url,
+                    ticket_provider=ticket_provider,
                     first_seen=now,
                     last_seen=now,
                 )
@@ -108,6 +111,8 @@ class EventSnapshotStage(BaseStage):
                         "openers": raw_event.openers,
                         "doors_time": raw_event.doors_time,
                         "show_time": raw_event.show_time,
+                        "ticket_url": raw_event.ticket_url,
+                        "ticket_provider": ticket_provider,
                     },
                 )
             )

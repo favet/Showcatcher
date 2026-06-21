@@ -28,6 +28,9 @@ class Event(Base):
     venue: Mapped[str] = mapped_column(String(255), nullable=False)
     on_sale_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     ticket_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Ticketing platform the ticket_url points at (etix/dice/ticketmaster/venue/…).
+    # Drives the de-Ticketmaster link preference and the UI provider badge.
+    ticket_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     first_seen: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
