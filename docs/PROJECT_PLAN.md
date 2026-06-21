@@ -1,0 +1,187 @@
+# Opener — Project Plan
+
+> Working name: **Opener** (placeholder — openers are where discovery lives). Rename freely; the name only appears in docs, not in logic.
+
+## How to use this plan
+
+The build is a **walking skeleton first, then a thin end-to-end slice, then the discovery engine and playlist.** You should have something verifiable at the end of every phase.
+
+Each phase has **sub-phases** (the work) and an **Exit Gate** (a checklist of *provable* criteria). The rules:
+
+- **A gate is a hard stop.** Do not start the next phase until every box in the current gate is checked.
+- **Every gate item is provable** — it maps to a passing automated test, a committed fixture, a query result, or a documented manual check. "It seems to work" is not a checked box.
+- If a gate item can't be made provable, that's a signal the design is underspecified — fix that before proceeding.
+- When you check a box, note *how* it was proven (test name, command, or doc link) right next to it.
+
+### Global Definition of Done (applies to every sub-phase)
+
+A unit of work is done only when **all** of these are true:
+
+- [ ] Code is typed, linted, and formatted (mypy + ruff clean).
+- [ ] It has tests that run **offline** (no live network) against committed fixtures.
+- [ ] If it's a stage, it is **idempotent** — re-running produces no duplicates and no corruption (asserted by a test).
+- [ ] Failures are observable — errors route to the dead-letter table and/or the run-ledger, never a silent swallow.
+- [ ] Any decision it makes is **explainable** — logged and/or decomposable. No black boxes.
+- [ ] Secrets are read from env, never committed.
+- [ ] Relevant docs updated (this plan, ARCHITECTURE.md, or DECISIONS.md).
+
+---
+
+## Phase 0 — Foundations & Diagnostic Skeleton
+
+**Goal:** Stand up the repo, the stage-runner pattern, and *all* the diagnostics/test scaffolding **before any feature exists**, so everything built later is born observable and testable.
+
+### Sub-phases
+- **0.1 Repo & tooling** — `pyproject.toml`, ruff, black, mypy, pre-commit, pytest, `.gitignore`, env handling (`.env` ignored; `.env.example` committed).
+- **0.2 Containers** — Docker Compose with `app` + `postgres` services; one-command bootstrap documented.
+- **0.3 DB baseline & migrations** — Alembic; base schema; `run_ledger` table; `dead_letter` table.
+- **0.4 Stage-runner framework** — a `BaseStage` abstraction: reads/writes only via the DB, records start/outcome to `run_ledger`, captures errors to `dead_letter`, emits structured logs. Idempotency is a first-class contract of the base class.
+- **0.5 Observability baseline** — structured JSON logging; a `health` command that prints each stage's last run + status.
+- **0.6 Test harness & CI** — fixture loader, DB test fixtures (ephemeral/transactional), CI workflow running lint + type-check + tests on a clean checkout.
+
+### Exit Gate 0 (provable)
+- [ ] From a clean clone, the documented bootstrap (`make up` or equivalent) brings up `app` + `postgres` with no manual steps.
+- [ ] Migrations apply cleanly from an empty DB **and** roll back cleanly (tested both directions).
+- [ ] A no-op example stage runs, writes a `run_ledger` row, and **re-running it changes nothing** (idempotency test passes).
+- [ ] A deliberately failing example stage routes its error to `dead_letter` with context and does **not** crash the process (test passes).
+- [ ] CI is green on a clean checkout: lint, type-check, and tests all pass.
+- [ ] `make health` prints a per-stage last-run summary.
+
+---
+
+## Phase 1 — Listening-History Ingest (Taste Substrate)
+
+**Goal:** Your full listening history lives in *your* Postgres, with stable artist identities. Verifiable on its own, before any venue exists.
+
+### Sub-phases
+- **1.1 Last.fm client + fixtures** — rate-limit-aware client; recorded API responses committed as fixtures.
+- **1.2 Backfill job** — full history → Postgres; resumable (checkpoints last cursor); idempotent.
+- **1.3 Incremental sync** — fetch only scrobbles since last stored timestamp.
+- **1.4 Artist identity / MBID resolution** — resolve every scrobble's artist to a MusicBrainz ID or an explicit unresolved-queue entry (no silent drops).
+- **1.5 Decayed-affinity query** — time-decayed artist weights with a **tunable half-life** (config, not hardcoded).
+
+### Exit Gate 1 (provable)
+- [ ] Backfill loads full history; stored scrobble count reconciles with Last.fm's reported count within a documented tolerance.
+- [ ] Re-running backfill and incremental produces **zero** duplicate scrobbles (unique constraint + test).
+- [ ] Every scrobble resolves to an MBID **or** appears in the unresolved queue — the unresolved count is queryable; nothing is silently dropped (test).
+- [ ] The affinity query returns sensible decayed top-N for a fixture user (golden test).
+- [ ] Changing the half-life config measurably changes weights (test).
+
+---
+
+## Phase 2 — Event Ingest (One Source, End to End)
+
+**Goal:** Prove the source-adapter pattern and change detection with **exactly one** source. Adding more sources later must be additive.
+
+### Sub-phases
+- **2.1 Venue source inventory** — investigate how each target Portland venue actually publishes shows (own site JSON-LD vs. shared ticketer vs. aggregator). Record findings + the chosen first source in DECISIONS.md. *Do not assume a schema before this.*
+- **2.2 Normalized Event schema** — non-negotiable fields: `headliner`, `openers[]`, `date`, `venue`, `on_sale_date`, `ticket_url`, `source`, `source_id`, `first_seen`, `last_seen`.
+- **2.3 Source adapter interface + first adapter** — adapter implements a narrow interface; all source-specific parsing lives behind it.
+- **2.4 Snapshot + diff change detection** — detect a new event **and** an opener added to an existing event.
+- **2.5 Source health & dead-letter** — zero-result anomaly detection; unparseable records → dead-letter with source context.
+
+### Exit Gate 2 (provable)
+- [ ] One source ingests ≥1 real upcoming show into the normalized schema; the raw response is committed as a fixture.
+- [ ] The contract test **fails** when the committed fixture is mutated to simulate a layout change (proves the canary works).
+- [ ] Replaying two snapshots (before/after an added opener) produces **exactly one** change event (test).
+- [ ] A zero-result run raises a source-health anomaly instead of silently reporting "no shows" (test).
+- [ ] An unparseable record lands in `dead_letter` with source context and does not crash the run (test).
+- [ ] Adding a second source is demonstrably an adapter + config change with **no** edits to core/pipeline code (stub a second adapter to prove it).
+
+---
+
+## Phase 3 — Resolution + Exact-Match + First Output (Vertical Slice)
+
+**Goal:** A working end-to-end pipeline. Scrobbles + events → matches → a ticket digest. This is the high-precision win.
+
+### Sub-phases
+- **3.1 Entity resolution** — event-artist ↔ taste-artist via MBID, with a fuzzy fallback that emits a confidence score.
+- **3.2 Exact-match scoring** — explainable: each matched show carries a score breakdown.
+- **3.3 Ticket digest output adapter** — renders matched upcoming shows with `ticket_url` + `on_sale_date`; optional `.ics`.
+- **3.4 End-to-end run** — one command runs the whole pipeline on fixtures, deterministically.
+
+### Exit Gate 3 (provable)
+- [ ] Resolver maps a known fixture artist correctly; the fuzzy case ("Mt. Joy" / "Mount Joy") resolves with confidence ≥ threshold (test).
+- [ ] Low-confidence/ambiguous matches go to a **review queue** — never silently matched or dropped (test).
+- [ ] Every digest entry exposes its score breakdown — asserted by a test (no black box).
+- [ ] The full pipeline runs end-to-end on fixtures and produces a **deterministic** digest (golden test).
+- [ ] Every digest entry includes `ticket_url` and `on_sale_date` (test).
+
+> **Open decision (see DECISIONS.md OQ5):** whether to ship the Phase 3 digest as a standalone tool for a while, or treat Phase 3 purely as a proving ground and hold all user-facing output until the playlist (Phase 5). Resolve before exiting this phase.
+
+---
+
+## Phase 4 — Taste Vector + Discovery Scoring (Adjacency Engine)
+
+**Goal:** Score artists you've *barely heard*. This is the engine the discovery playlist depends on — its whole value is surfacing under-explored bands.
+
+### Sub-phases
+- **4.1 Tag/genre vector** — per-user affinity over tags (Last.fm tags / MusicBrainz).
+- **4.2 Artist similarity** — neighbors via tag overlap and/or ListenBrainz similar-artists.
+- **4.3 Discovery weighting** — boost artists that are taste-adjacent **and** low in personal play-count.
+- **4.4 Unified scoring module** — versioned, swappable; terms: taste, adjacency, discovery, recency, distance.
+- **4.5 Score explainability** — every scored show persists its full term breakdown; a CLI answers "why did show X score Y?".
+
+### Exit Gate 4 (provable)
+- [ ] Similarity returns plausible neighbors for fixture artists (golden test).
+- [ ] **The discovery tilt works:** holding venue and date constant, a taste-adjacent artist with low play-count scores *higher* than an already-heavy-rotation artist (test asserts the ordering).
+- [ ] Scoring config is versioned; two versions run on the same input can be diffed (A/B harness exists, test).
+- [ ] Every scored show persists its full term breakdown; `explain <show>` prints it (demonstrated).
+
+---
+
+## Phase 5 — Spotify Discovery Playlist (Hero Output)
+
+**Goal:** A Spotify playlist of future-Portland artists, weighted toward bands you've under-explored.
+
+### Sub-phases
+- **5.0 PREREQ — confirm Spotify Premium.** Dev-mode apps now require the owner to hold Premium (Feb 2026 API changes). If not Premium, pivot the bridge to an export-file path before building the live write.
+- **5.1 OAuth** — user auth + token refresh; secrets in env.
+- **5.2 Track selection** — representative tracks per selected artist via Last.fm `artist.getTopTracks` (keeps selection off the eroding Spotify API); discovery-weighted set.
+- **5.3 URI resolution** — Spotify `/search` → track URIs; **log every resolution decision** (candidates considered + chosen).
+- **5.4 Playlist write/refresh** — `POST /me/playlists` + add/replace items, behind the output adapter.
+- **5.5 Dry-run mode** — build the full URI list and write nothing; produce an inspectable plan artifact.
+
+### Exit Gate 5 (provable)
+- [ ] Spotify account Premium status is confirmed and recorded (DECISIONS OQ1); bridge path chosen accordingly.
+- [ ] Dry-run produces a complete, inspectable playlist plan from real scored data **without touching Spotify** (test).
+- [ ] Every artist→track resolution is logged with candidates + choice — asserted (no black box).
+- [ ] Live write creates/refreshes a real playlist (documented manual verification) — gated on Premium.
+- [ ] Playlist composition reflects discovery weighting: ≥ N% under-explored artists (configurable threshold, asserted against a fixture run).
+- [ ] An export-file bridge **stub** exists, proving the Spotify adapter is swappable if the API changes again.
+
+---
+
+## Phase 6 — Scale-Out & Hardening
+
+**Goal:** All venues, distance bands, tuning, and resilience. This is the A/B-until-robust phase.
+
+### Sub-phases
+- **6.1 Remaining source adapters** — each ships with a fixture, a contract test, and a health check.
+- **6.2 Distance band trait** — `close` (≤10 min) / `near` (10–30 min) / `far` (>30 min) from the existing Valhalla ETA map, computed once at venue registration; feeds the score.
+- **6.3 Tuning** — calibrate half-life and scoring weights against real output via A/B runs; record the chosen config.
+- **6.4 Observability expansion** — per-run health summaries, anomaly alerting, a status view across all sources.
+- **6.5 Resilience** — retries/backoff; partial-failure isolation so one bad source never sinks a whole run.
+
+### Exit Gate 6 (provable)
+- [ ] Every target venue is ingested and each has a fixture + contract test + health check (per-venue checklist completed).
+- [ ] Every venue carries a distance band and scoring consumes it (test).
+- [ ] A source forced to fail does **not** prevent output from the healthy sources (test).
+- [ ] One health view surfaces every source's last-success time and anomaly state.
+- [ ] A tuning pass is documented and the chosen config is recorded in DECISIONS.md.
+
+---
+
+## Phase dependency summary
+
+```
+0 Foundations ──► 1 History ──► 2 Events (1 source) ──► 3 Match + Digest (slice)
+                                                              │
+                                              4 Discovery scoring
+                                                              │
+                                              5 Spotify playlist (hero)
+                                                              │
+                                              6 Scale-out + hardening
+```
+
+Phases 1 and 2 can overlap once Phase 0's gate is green (they share no code, only the DB). Everything downstream of Phase 3 is strictly sequential.
