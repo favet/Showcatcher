@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Showcat — Portland Music Discovery</title>
+  <meta name="description" content="Upcoming Portland shows weighted toward artists you haven't fully explored yet.">
+  
+  <!-- Force HTTPS -->
+  <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+  
+  <!-- Prevent browser caching of the HTML file so users always get the latest updates -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    :root {
+      --bg: #09090b;
+      --bg-gradient: radial-gradient(circle at top, #1e1330 0%, #09090b 60%);
+      --surface: rgba(20, 20, 25, 0.7);
+      --surface-hover: rgba(28, 28, 35, 0.9);
+      --accent: #10b981;
+      --accent-hover: #34d399;
+      --accent-glow: rgba(16, 185, 129, 0.15);
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --border: rgba(63, 63, 70, 0.5);
+      --border-hover: rgba(16, 185, 129, 0.4);
+      --font-display: 'Outfit', system-ui, -apple-system, sans-serif;
+      --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      background-image: var(--bg-gradient);
+      background-attachment: fixed;
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: 4rem;
+    }
+    a { color: var(--accent); text-decoration: none; transition: color 0.2s ease; }
+    a:hover { color: var(--accent-hover); }
+    
+    header { max-width: 1000px; margin: 0 auto; padding: 3rem 1.5rem 2rem; text-align: center; }
+    header h1 {
+      font-family: var(--font-display); font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em;
+      margin-bottom: 0.5rem; background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    header p { color: var(--muted); font-size: 1rem; max-width: 600px; margin: 0 auto; }
+    
+    .layout-grid {
+      max-width: 1000px; margin: 0 auto; padding: 0 1.5rem;
+      display: grid; grid-template-columns: 1fr; gap: 2rem;
+    }
+    @media (min-width: 768px) {
+      .layout-grid { grid-template-columns: 280px 1fr; align-items: start; }
+    }
+    
+    .panel {
+      background: var(--surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem;
+    }
+    
+    .filters h3 { font-family: var(--font-display); margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    .filter-group { margin-bottom: 1.5rem; }
+    .filter-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem; color: var(--muted); }
+    
+    .checkbox-item { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.9rem; cursor: pointer; }
+    .checkbox-item input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+    
+    .timeline-container { display: flex; flex-direction: column; gap: 1rem; position: relative; }
+    
+    .show-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 1.25rem 1.5rem; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex; flex-direction: column; gap: 0.75rem; position: relative;
+    }
+    .show-card:hover {
+      background: var(--surface-hover); border-color: var(--border-hover);
+      transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4), 0 0 15px var(--accent-glow);
+    }
+    
+    .show-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+    .show-headliner { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: #fff; }
+    .show-details { color: var(--muted); font-size: 0.9rem; margin-top: 0.15rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    
+    .venue-name { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .star-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.1rem; padding: 0; line-height: 1; transition: color 0.2s; }
+    .star-btn:hover { color: #fbbf24; }
+    .star-btn.active { color: #fbbf24; }
+    
+    .score-badge {
+      background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 8px; padding: 0.35rem 0.6rem; text-align: center; min-width: 50px;
+    }
+    .score-num { font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--accent); }
+    
+    .tags { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .tag { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+    
+    .travel-pill { background: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.2rem; }
+    
+    .ticket-btn {
+      background: var(--accent); color: #09090b; font-weight: 600; font-size: 0.85rem;
+      padding: 0.4rem 0.9rem; border-radius: 6px; display: inline-block; margin-top: 0.5rem;
+    }
+    .ticket-btn:hover { background: var(--accent-hover); }
+    
+    .drawer-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+      z-index: 40; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .drawer-overlay.open { opacity: 1; pointer-events: all; }
+    
+    .drawer {
+      position: fixed; top: 0; right: -400px; width: 100%; max-width: 400px; height: 100vh;
+      background: #09090b; border-left: 1px solid var(--border); z-index: 50;
+      transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding: 1.5rem; display: flex; flex-direction: column;
+    }
+    .drawer.open { right: 0; }
+    .drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .drawer-close { background: none; border: none; color: var(--text); font-size: 1.5rem; cursor: pointer; }
+    
+    .drawer-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 500; margin-bottom: 1rem; }
+    .drawer-btn:hover { background: var(--surface-hover); border-color: var(--border-hover); }
+    
+    .empty-state { text-align: center; padding: 3rem; color: var(--muted); }
+    
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Show<span>cat</span></h1>
+      <p>Chronological timeline of top recommended Portland shows.</p>
+    </header>
+    
+    <div class="layout-grid">
+      <!-- Filters Sidebar -->
+      <aside class="panel filters">
+        <h3>Filters</h3>
+        
+        <div class="filter-group">
+          <label>Favorites</label>
+          <label class="checkbox-item">
+            <input type="checkbox" v-model="filters.favoritesOnly">
+            Show only starred venues ({{ favoriteVenues.length }})
+          </label>
+        </div>
+        
+        <div class="filter-group">
+          <label>Max Travel Time (from Home)</label>
+          <input type="range" v-model="filters.maxTravelMins" min="5" max="60" step="5" style="width:100%">
+          <div style="text-align:right; font-size:0.8rem; color:var(--muted)">
+            {{ filters.maxTravelMins }} mins
+          </div>
+        </div>
+        
+        <div class="filter-group">
+          <label>Venue Size</label>
+          <label class="checkbox-item"><input type="checkbox" value="small" v-model="filters.sizes"> Small (&lt;300)</label>
+          <label class="checkbox-item"><input type="checkbox" value="mid" v-model="filters.sizes"> Mid (300-1000)</label>
+          <label class="checkbox-item"><input type="checkbox" value="large" v-model="filters.sizes"> Large (&gt;1000)</label>
+        </div>
+        
+        <div class="filter-group">
+          <label>Sort By</label>
+          <select v-model="filters.sortBy" style="width:100%; padding:0.4rem; background:rgba(255,255,255,0.05); color:white; border:1px solid var(--border); border-radius:4px;">
+            <option value="date">Chronological (Date)</option>
+            <option value="score">Top Score</option>
+          </select>
+        </div>
+        
+        <button class="drawer-btn" style="width:100%" @click="drawerOpen = true">
+          🎵 Open Spotify Playlist
+        </button>
+      </aside>
+
+      <!-- Timeline -->
+      <main class="timeline-container">
+        <div style="font-size:0.9rem; color:var(--muted); margin-bottom:0.5rem">
+          Showing {{ filteredShows.length }} of {{ shows.length }} upcoming shows
+        </div>
+        
+        <div v-if="filteredShows.length === 0" class="empty-state">
+          No shows match your filters. Try adjusting them.
+        </div>
+        
+        <article v-for="show in filteredShows" :key="show.id" class="show-card">
+          <div class="show-header">
+            <div>
+              <h2 class="show-headliner">{{ show.headliner }}</h2>
+              <div class="show-details">
+                <span>{{ show.date_display }}</span>
+                <span>&bull;</span>
+                <span class="venue-name">
+                  {{ show.venue }}
+                  <button class="star-btn" :class="{active: isFavorite(show.venue)}" @click="toggleFavorite(show.venue)" title="Toggle Favorite">
+                    ★
+                  </button>
+                </span>
+                <span v-if="show.travel_minutes" class="travel-pill">
+                  🚗 {{ show.travel_minutes }} min
+                </span>
+              </div>
+            </div>
+            <div class="score-badge" title="Discovery Score">
+              <span class="score-num">{{ show.score_total.toFixed(1) }}</span>
+            </div>
+          </div>
+          
+          <div>
+            <div style="font-size:0.85rem; color:var(--muted)">Matched via <strong>{{ show.matched_artist }}</strong></div>
+            <div class="tags" v-if="show.genres && show.genres.length">
+              <span class="tag" v-for="g in show.genres">{{ g }}</span>
+            </div>
+          </div>
+          
+          <div>
+            <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" class="ticket-btn">Get tickets &rarr;</a>
+          </div>
+        </article>
+      </main>
+    </div>
+    
+    <!-- Spotify Drawer -->
+    <div class="drawer-overlay" :class="{open: drawerOpen}" @click="drawerOpen = false"></div>
+    <div class="drawer" :class="{open: drawerOpen}">
+      <div class="drawer-header">
+        <h3 style="font-family:var(--font-display)">Discovery Playlist</h3>
+        <button class="drawer-close" @click="drawerOpen = false">&times;</button>
+      </div>
+      <iframe style="border-radius:12px; flex-grow:1" src="https://open.spotify.com/embed/playlist/2WyamYcCikdYEQBRivJhk2?utm_source=generator&theme=0" width="100%" height="100%" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" v-if="drawerOpen"></iframe>
+    </div>
+    
+    <footer style="text-align:center; padding: 2rem; color:var(--muted); font-size:0.85rem; margin-top:2rem; border-top:1px solid var(--border)">
+      Generated 2026-06-21 10:43 UTC &middot; Taste from <a href="https://www.last.fm/user/j-m-f" target="_blank">Last.fm</a>
+    </footer>
+  </div>
+
+  <script>
+    const rawShows = [{"id": 241, "headliner": "Gorillaz", "venue": "Moda Center", "capacity": "large", "date": "2026-10-30", "date_display": "Fri Oct 30, 2026", "ticket_url": "https://www.ticketmaster.com/gorillaz-the-mountain-tour-portland-oregon-10-30-2026/event/0F00645AB26BB216", "score_total": 1.103, "matched_artist": "Little Simz", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["rap", "Hip-Hop", "hip hop"], "timestamp": 1793318400}, {"id": 152, "headliner": "Weezer", "venue": "Moda Center", "capacity": "large", "date": "2026-09-11", "date_display": "Fri Sep 11, 2026", "ticket_url": "https://www.ticketmaster.com/weezer-the-gathering-portland-oregon-09-11-2026/event/0F006470B39E9023", "score_total": 1.093, "matched_artist": "Silversun Pickups", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["indie rock", "shoegaze", "indie"], "timestamp": 1789084800}, {"id": 194, "headliner": "Jungle", "venue": "Veterans Memorial Coliseum", "capacity": "large", "date": "2026-10-01", "date_display": "Thu Oct 1, 2026", "ticket_url": "https://www.ticketmaster.com/jungle-world-tour-2026-portland-oregon-10-01-2026/event/0F006472BACC8E17", "score_total": 0.795, "matched_artist": "Jungle", "travel_minutes": 5, "travel_miles": 2.6, "genres": ["electronic", "psychedelic", "techno"], "timestamp": 1790812800}, {"id": 104, "headliner": "LCD Soundsystem", "venue": "McMenamins Historic Edgefield Manor", "capacity": "large", "date": "2026-08-08", "date_display": "Sat Aug 8, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A70e7p", "score_total": 0.69, "matched_artist": "LCD Soundsystem", "travel_minutes": 22, "travel_miles": 17.3, "genres": ["electronic", "indie", "dance"], "timestamp": 1786147200}, {"id": 106, "headliner": "LCD Soundsystem", "venue": "McMenamins Historic Edgefield Manor", "capacity": "large", "date": "2026-08-09", "date_display": "Sun Aug 9, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A70e79", "score_total": 0.69, "matched_artist": "LCD Soundsystem", "travel_minutes": 22, "travel_miles": 17.3, "genres": ["electronic", "indie", "dance"], "timestamp": 1786233600}, {"id": 169, "headliner": "Beck", "venue": "Keller Auditorium", "capacity": "large", "date": "2026-09-19", "date_display": "Sat Sep 19, 2026", "ticket_url": "https://portland5.evenue.net/cgi-bin/ncommerce3/SEGetEventList?groupCode=BECK&linkID=pcpa&shopperContext=&caller=&appCode=", "score_total": 0.687, "matched_artist": "Beck", "travel_minutes": 9, "travel_miles": 4.8, "genres": ["alternative", "indie", "singer-songwriter"], "timestamp": 1789776000}, {"id": 170, "headliner": "Beck", "venue": "Keller Auditorium", "capacity": "large", "date": "2026-09-19", "date_display": "Sat Sep 19, 2026", "ticket_url": "https://portland5.evenue.net/cgi-bin/ncommerce3/SEGetEventList?groupCode=BECK&linkID=pcpa&shopperContext=&caller=&appCode=", "score_total": 0.687, "matched_artist": "Beck", "travel_minutes": 9, "travel_miles": 4.8, "genres": ["alternative", "indie", "singer-songwriter"], "timestamp": 1789776000}, {"id": 168, "headliner": "Beck", "venue": "Keller Auditorium", "capacity": "large", "date": "2026-09-19", "date_display": "Sat Sep 19, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A7xfFk", "score_total": 0.687, "matched_artist": "Beck", "travel_minutes": 9, "travel_miles": 4.8, "genres": ["alternative", "indie", "singer-songwriter"], "timestamp": 1789776000}, {"id": 181, "headliner": "JPEGMAFIA", "venue": "Roseland Theater", "capacity": "large", "date": "2026-09-26", "date_display": "Sat Sep 26, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A709Cp", "score_total": 0.634, "matched_artist": "JPEGMAFIA", "travel_minutes": 9, "travel_miles": 3.7, "genres": ["Hip-Hop", "glitch hop", "experimental hip hop"], "timestamp": 1790380800}, {"id": 149, "headliner": "Childish Gambino", "venue": "Moda Center", "capacity": "large", "date": "2026-09-08", "date_display": "Tue Sep 8, 2026", "ticket_url": "https://www.ticketmaster.com/childish-gambino-the-new-world-tour-portland-oregon-09-08-2026/event/0F0060A1E7644A41", "score_total": 0.61, "matched_artist": "Childish Gambino", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["Hip-Hop", "rap", "hip hop"], "timestamp": 1788825600}, {"id": 76, "headliner": "Young the Giant", "venue": "McMenamins Historic Edgefield Manor", "capacity": "large", "date": "2026-07-26", "date_display": "Sun Jul 26, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A7-orA", "score_total": 0.609, "matched_artist": "Young the Giant", "travel_minutes": 22, "travel_miles": 17.3, "genres": ["indie rock", "indie", "rock"], "timestamp": 1785024000}, {"id": 148, "headliner": "Tame Impala", "venue": "Moda Center", "capacity": "large", "date": "2026-09-08", "date_display": "Tue Sep 8, 2026", "ticket_url": "https://www.ticketmaster.com/tame-impala-the-deadbeat-tour-portland-oregon-09-08-2026/event/0F00643BBC928C13", "score_total": 0.603, "matched_artist": "Tame Impala", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["Psychedelic Rock", "psychedelic", "indie rock"], "timestamp": 1788825600}, {"id": 258, "headliner": "Band of Horses", "venue": "Roseland Theater", "capacity": "large", "date": "2026-11-10", "date_display": "Tue Nov 10, 2026", "ticket_url": "https://www.etix.com/ticket/p/74643459/an-evening-with-band-of-horses-portland-roseland-theater", "score_total": 0.592, "matched_artist": "Band of Horses", "travel_minutes": 9, "travel_miles": 3.7, "genres": ["indie", "indie rock", "alternative"], "timestamp": 1794268800}, {"id": 256, "headliner": "Band of Horses", "venue": "Roseland Theater", "capacity": "large", "date": "2026-11-10", "date_display": "Tue Nov 10, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A70bqv", "score_total": 0.592, "matched_artist": "Band of Horses", "travel_minutes": 9, "travel_miles": 3.7, "genres": ["indie", "indie rock", "alternative"], "timestamp": 1794268800}, {"id": 231, "headliner": "Slow Pulp", "venue": "Revolution Hall - Portland", "capacity": "mid", "date": "2026-10-23", "date_display": "Fri Oct 23, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A70b3o", "score_total": 0.506, "matched_artist": "Slow Pulp", "travel_minutes": 8, "travel_miles": 4.7, "genres": ["dream pop", "shoegaze", "indie rock"], "timestamp": 1792713600}, {"id": 191, "headliner": "Perfume Genius", "venue": "Aladdin Theater", "capacity": "mid", "date": "2026-09-29", "date_display": "Tue Sep 29, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A70-ZN", "score_total": 0.492, "matched_artist": "Perfume Genius", "travel_minutes": 12, "travel_miles": 6.2, "genres": ["singer-songwriter", "ambient", "experimental"], "timestamp": 1790640000}, {"id": 121, "headliner": "Clownvis Presley", "venue": "Dante's", "capacity": "mid", "date": "2026-08-16", "date_display": "Sun Aug 16, 2026", "ticket_url": "https://www.ticketweb.com/event/oddballs-and-outlaws-iv-and-dantes-tickets/14904213", "score_total": 0.459, "matched_artist": "Elvis Presley", "travel_minutes": 8, "travel_miles": 3.7, "genres": ["rock n roll", "classic rock", "rock"], "timestamp": 1786838400}, {"id": 235, "headliner": "G-Eazy", "venue": "Moda Center", "capacity": "large", "date": "2026-10-25", "date_display": "Sun Oct 25, 2026", "ticket_url": "https://www.ticketmaster.com/logic-geazy-the-endless-summer-tour-portland-oregon-10-25-2026/event/0F00648EDF0DE894", "score_total": 0.413, "matched_artist": "Juicy J", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["Hip-Hop", "rap", "Dirty South"], "timestamp": 1792886400}, {"id": 186, "headliner": "Chance The Rapper", "venue": "Moda Center", "capacity": "large", "date": "2026-09-27", "date_display": "Sun Sep 27, 2026", "ticket_url": "https://www.ticketmaster.com/chance-the-rapper-coloring-book-10-portland-oregon-09-27-2026/event/0F0064ACB1B7B85A", "score_total": 0.4, "matched_artist": "Chance the Rapper", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["Hip-Hop", "rap", "hip hop"], "timestamp": 1790467200}, {"id": 255, "headliner": "The Tallest Man On Earth", "venue": "Revolution Hall - Portland", "capacity": "mid", "date": "2026-11-08", "date_display": "Sun Nov 8, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A70zog", "score_total": 0.351, "matched_artist": "The Tallest Man on Earth", "travel_minutes": 8, "travel_miles": 4.7, "genres": ["folk", "singer-songwriter", "acoustic"], "timestamp": 1794096000}, {"id": 40, "headliner": "Have a Nice Life", "venue": "Wonder Ballroom", "capacity": "mid", "date": "2026-07-10", "date_display": "Fri Jul 10, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A706-4", "score_total": 0.321, "matched_artist": "Have a Nice Life", "travel_minutes": 5, "travel_miles": 1.8, "genres": ["shoegaze", "post-rock", "drone"], "timestamp": 1783641600}, {"id": 114, "headliner": "Bronco", "venue": "Arlene Schnitzer Concert Hall", "capacity": "large", "date": "2026-08-14", "date_display": "Fri Aug 14, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A7-Mbz", "score_total": 0.305, "matched_artist": "Broncho", "travel_minutes": 9, "travel_miles": 3.8, "genres": ["Garage Rock", "Garage Punk", "indie"], "timestamp": 1786665600}, {"id": 202, "headliner": "Tyler Childers", "venue": "Moda Center", "capacity": "large", "date": "2026-10-03", "date_display": "Sat Oct 3, 2026", "ticket_url": "https://www.ticketmaster.com/tyler-childers-snipe-hunt-portland-oregon-10-03-2026/event/0F0063789593584B", "score_total": 0.26, "matched_artist": "Wednesday", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["shoegaze", "indie rock", "Alt-country"], "timestamp": 1790985600}, {"id": 192, "headliner": "Julien-K", "venue": "Star Theater", "capacity": "mid", "date": "2026-09-30", "date_display": "Wed Sep 30, 2026", "ticket_url": "https://www.ticketweb.com/event/julien-k-nite-the-star-theater-tickets/14980723", "score_total": 0.237, "matched_artist": "Julien Baker", "travel_minutes": 9, "travel_miles": 3.7, "genres": ["indie", "singer-songwriter", "folk"], "timestamp": 1790726400}, {"id": 163, "headliner": "Oregon Symphony", "venue": "Arlene Schnitzer Concert Hall", "capacity": "large", "date": "2026-09-18", "date_display": "Fri Sep 18, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A70dPI", "score_total": 0.215, "matched_artist": "Gregory Alan Isakov", "travel_minutes": 9, "travel_miles": 3.8, "genres": ["folk", "singer-songwriter", "acoustic"], "timestamp": 1789689600}, {"id": 9, "headliner": "Natalia Lafourcade", "venue": "Arlene Schnitzer Concert Hall", "capacity": "large", "date": "2026-06-23", "date_display": "Tue Jun 23, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A7bKFx", "score_total": 0.184, "matched_artist": "Natalia Lafourcade", "travel_minutes": 9, "travel_miles": 3.8, "genres": ["pop", "latin", "mexico"], "timestamp": 1782172800}, {"id": 208, "headliner": "Jane Remover", "venue": "Revolution Hall - Portland", "capacity": "mid", "date": "2026-10-06", "date_display": "Tue Oct 6, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A7xpvz", "score_total": 0.162, "matched_artist": "Jane Remover", "travel_minutes": 8, "travel_miles": 4.7, "genres": ["hyperpop", "digicore", "shoegaze"], "timestamp": 1791244800}, {"id": 238, "headliner": "Mon Laferte", "venue": "Arlene Schnitzer Concert Hall", "capacity": "large", "date": "2026-10-27", "date_display": "Tue Oct 27, 2026", "ticket_url": "https://portland5.evenue.net/cgi-bin/ncommerce3/SEGetEventList?groupCode=LAFERTE&linkID=pcpa&shopperContext=&caller=&cgc=", "score_total": 0.143, "matched_artist": "Mon Laferte", "travel_minutes": 9, "travel_miles": 3.8, "genres": ["chile", "pop", "chilean"], "timestamp": 1793059200}, {"id": 236, "headliner": "Mon Laferte", "venue": "Arlene Schnitzer Concert Hall", "capacity": "large", "date": "2026-10-27", "date_display": "Tue Oct 27, 2026", "ticket_url": "https://www.ticketmaster.com/event/Z7r9jZ1A7-Su7", "score_total": 0.143, "matched_artist": "Mon Laferte", "travel_minutes": 9, "travel_miles": 3.8, "genres": ["chile", "pop", "chilean"], "timestamp": 1793059200}, {"id": 62, "headliner": "Joji", "venue": "Moda Center", "capacity": "large", "date": "2026-07-18", "date_display": "Sat Jul 18, 2026", "ticket_url": "https://www.ticketmaster.com/joji-solaris-portland-oregon-07-18-2026/event/0F006454CF043825", "score_total": 0.113, "matched_artist": "Corbin", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["cloud rap", "rnb", "alternative rnb"], "timestamp": 1784332800}, {"id": 124, "headliner": "Daniel Caesar", "venue": "Moda Center", "capacity": "large", "date": "2026-08-18", "date_display": "Tue Aug 18, 2026", "ticket_url": "https://www.ticketmaster.com/daniel-caesar-son-of-spergy-tour-portland-oregon-08-18-2026/event/0F00647BD180F235", "score_total": 0.041, "matched_artist": "Daniel Caesar", "travel_minutes": 5, "travel_miles": 2.8, "genres": ["rnb", "soul", "Neo-Soul"], "timestamp": 1787011200}];
+    
+    const { createApp, ref, computed, watch, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const shows = ref(rawShows);
+        const drawerOpen = ref(false);
+        
+        const filters = ref({
+          favoritesOnly: false,
+          maxTravelMins: 60,
+          sizes: ['small', 'mid', 'large'],
+          sortBy: 'date'
+        });
+        
+        const favoriteVenues = ref([]);
+        
+        onMounted(() => {
+          const saved = localStorage.getItem('showcat-favorites');
+          if (saved) {
+            favoriteVenues.value = JSON.parse(saved);
+          }
+        });
+        
+        watch(favoriteVenues, (newVals) => {
+          localStorage.setItem('showcat-favorites', JSON.stringify(newVals));
+        }, { deep: true });
+        
+        const isFavorite = (venue) => favoriteVenues.value.includes(venue);
+        
+        const toggleFavorite = (venue) => {
+          if (isFavorite(venue)) {
+            favoriteVenues.value = favoriteVenues.value.filter(v => v !== venue);
+          } else {
+            favoriteVenues.value.push(venue);
+          }
+        };
+        
+        const filteredShows = computed(() => {
+          let result = shows.value.filter(show => {
+            // Travel time filter
+            if (show.travel_minutes && show.travel_minutes > filters.value.maxTravelMins) return false;
+            
+            // Size filter
+            if (!filters.value.sizes.includes(show.capacity)) return false;
+            
+            // Favorites filter
+            if (filters.value.favoritesOnly && !isFavorite(show.venue)) return false;
+            
+            return true;
+          });
+          
+          if (filters.value.sortBy === 'date') {
+            result.sort((a, b) => a.timestamp - b.timestamp);
+          } else {
+            result.sort((a, b) => b.score_total - a.score_total);
+          }
+          
+          return result;
+        });
+        
+        return {
+          shows, filters, filteredShows, drawerOpen,
+          favoriteVenues, isFavorite, toggleFavorite
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

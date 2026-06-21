@@ -1,4 +1,4 @@
-"""Phase 3 — End-to-end pipeline (vertical slice) golden test.
+﻿"""Phase 3 — End-to-end pipeline (vertical slice) golden test.
 
 Gate 3 assertions covered here:
   - The full pipeline runs end-to-end on fixtures and produces a
@@ -14,9 +14,9 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from opener.cli.run import run_pipeline
-from opener.ingest.events.models import Event
-from opener.ingest.history.models import Artist, Scrobble
+from showcat.cli.run import run_pipeline
+from showcat.ingest.events.models import Event
+from showcat.ingest.history.models import Artist, Scrobble
 
 GOLDEN = Path(__file__).parent / "fixtures" / "digest" / "expected_digest.json"
 REF = datetime(2026, 7, 1, tzinfo=UTC)

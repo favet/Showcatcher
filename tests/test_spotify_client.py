@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from opener.adapters.spotify.client import SpotifyClient
+from showcat.adapters.spotify.client import SpotifyClient
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "spotify"
 
@@ -50,7 +50,7 @@ class TestResolve:
 
     def test_no_match_leaves_uri_unresolved(self, monkeypatch: pytest.MonkeyPatch) -> None:
         client = SpotifyClient(access_token="tok")
-        empty = {"tracks": {"items": []}}
+        empty: dict[str, Any] = {"tracks": {"items": []}}
         monkeypatch.setattr(
             client._session, "get", lambda *_a, **_k: FakeResponse(200, empty)
         )

@@ -1,10 +1,10 @@
-from typing import Any
+﻿from typing import Any
 
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from opener.core.base import BaseStage
-from opener.core.database import Base, DeadLetter
+from showcat.core.base import BaseStage
+from showcat.core.database import Base, DeadLetter
 
 
 # Define a temporary testing database model using modern Mapped classes

@@ -1,9 +1,9 @@
-"""Phase 5.1 — Spotify OAuth tests (offline; HTTP mocked)."""
+﻿"""Phase 5.1 — Spotify OAuth tests (offline; HTTP mocked)."""
 from typing import Any
 
 import pytest
 
-from opener.adapters.spotify.auth import SpotifyAuth, SpotifyToken
+from showcat.adapters.spotify.auth import SpotifyAuth, SpotifyToken
 
 
 class FakeResponse:
@@ -43,7 +43,7 @@ class TestTokenExchange:
         assert token.expires_at == 1000.0 + 3600
 
     def test_failed_exchange_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from opener.adapters.spotify.auth import SpotifyAuthError
+        from showcat.adapters.spotify.auth import SpotifyAuthError
 
         auth = _auth()
         monkeypatch.setattr(auth._session, "post", lambda *_a, **_k: FakeResponse(400, {}))

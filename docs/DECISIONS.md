@@ -1,4 +1,4 @@
-# Decisions — Opener
+# Decisions — Showcat
 
 A lightweight log so assumptions are **visible and revisable**, never silently baked in. Add a new entry whenever a real choice is made; move open questions to "Decided" once resolved.
 
@@ -45,6 +45,24 @@ Format: `Dn — Title — Decision — Why — Status`.
 **Decision:** Venues get a `close` (≤10 min) / `near` (10–30 min) / `far` (>30 min) band, computed once at registration, feeding the score.
 **Why:** The offline ETA map already exists; venue coordinates are static, so this is cheap "icing."
 **Status:** Firm. Band thresholds are tunable.
+
+### D15 — Auth model: single-owner pipeline, zero-auth consumers *(resolved Phase 6, 2026-06-21)*
+**Decision:** Showcat is a **single-owner pipeline** to minimize authentication friction. The pipeline owner (Justin) runs the backend pipeline using their credentials. Consumers (visitors) need **zero authentication** to use the application or consume its outputs.
+
+**Why and How Auth Works:**
+1. **Last.fm History:** **No user OAuth is required.** Since Last.fm listening profiles are public, the pipeline reads history using a standard developer API key and a username (e.g. `LASTFM_USER=j-m-f` in `.env`). No credentials are needed from the listener.
+2. **Spotify Integration:** **OAuth is only required to write/update a playlist.** A user token (`SPOTIFY_REFRESH_TOKEN`) is needed because playlist creation and item modification are write operations.
+
+**Evaluating Alternatives & Best Approach:**
+*   **The "Pre-made Playlist" Copy/Follow Model (Best Approach):** Instead of requiring every visitor to authenticate with Spotify (which would force us to set up user login, session management, and Spotify developer scopes), we write to a **public, pre-made Spotify playlist** (`2WyamYcCikdYEQBRivJhk2`) owned by Justin.
+    *   Visitors simply **follow** this public playlist or **copy** its contents to their own library with zero setup/login friction.
+*   **Personalized/Custom Music Taste (Zero-Auth Path):** If a visitor wants to see upcoming shows matching their *own* music taste (rather than Justin's):
+    *   They can provide their Last.fm username in a simple web form.
+    *   The web application performs taste matching and resolver queries on the fly using their public Last.fm history (using the app's Last.fm developer key).
+    *   It displays their personalized concert digest directly on the web page.
+    *   **No Spotify login/authorization is required** for this personalized web view, avoiding the need for complex Spotify OAuth.
+
+**Status:** Resolved. The current system relies on single-owner Spotify token credentials to refresh the public playlist, keeping consumer access 100% auth-free.
 
 ## Open questions (do not hardcode silently — resolve in the noted phase)
 

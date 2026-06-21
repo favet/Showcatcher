@@ -1,7 +1,7 @@
 [project]
-name = "opener"
+name = "showcat"
 version = "0.1.0"
-description = "Find live shows in Portland by artists you'd like and turn them into a Spotify discovery playlist."
+description = "Showcat — Portland live music discovery. Matches your listening history to upcoming shows and builds a Spotify discovery playlist."
 requires-python = ">=3.11"
 dependencies = [
     "sqlalchemy>=2.0.0",

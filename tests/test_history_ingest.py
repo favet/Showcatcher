@@ -17,12 +17,12 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from opener.adapters.lastfm.client import LastFmClient
-from opener.core.affinity import compute_decayed_affinity
-from opener.ingest.history.backfill import HistoryBackfillStage, _parse_scrobble
-from opener.ingest.history.incremental import HistoryIncrementalStage
-from opener.ingest.history.mbid_resolve import MbidResolveStage
-from opener.ingest.history.models import Artist, ArtistUnresolvedQueue, Scrobble
+from showcat.adapters.lastfm.client import LastFmClient
+from showcat.core.affinity import compute_decayed_affinity
+from showcat.ingest.history.backfill import HistoryBackfillStage, _parse_scrobble
+from showcat.ingest.history.incremental import HistoryIncrementalStage
+from showcat.ingest.history.mbid_resolve import MbidResolveStage
+from showcat.ingest.history.models import Artist, ArtistUnresolvedQueue, Scrobble
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "lastfm"
 
@@ -55,11 +55,11 @@ class TestClientRetry:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A 500 then a 200 should succeed after one retry (no backoff sleep in test)."""
+        import time
+
         import requests
 
-        from opener.adapters.lastfm import client as client_mod
-
-        monkeypatch.setattr(client_mod.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(time, "sleep", lambda _s: None)
         client = LastFmClient(api_key="fake", user="testuser")
 
         calls = {"n": 0}
@@ -71,7 +71,7 @@ class TestClientRetry:
             def raise_for_status(self) -> None:
                 if self.status_code >= 500:
                     err = requests.exceptions.HTTPError("500 Server Error")
-                    err.response = self  # type: ignore[assignment]
+                    err.response = self
                     raise err
 
             def json(self) -> dict[str, Any]:
@@ -95,7 +95,7 @@ class TestClientRetry:
 
             def raise_for_status(self) -> None:
                 err = requests.exceptions.HTTPError("403")
-                err.response = self  # type: ignore[assignment]
+                err.response = self
                 raise err
 
             def json(self) -> dict[str, Any]:

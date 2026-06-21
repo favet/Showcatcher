@@ -1,4 +1,4 @@
-from collections.abc import Generator
+﻿from collections.abc import Generator
 from contextlib import contextmanager
 
 import pytest
@@ -6,14 +6,14 @@ from pytest import MonkeyPatch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-import opener.ingest.events.models  # noqa: F401
+import showcat.ingest.events.models  # noqa: F401
 
 # Import all models so Base.metadata.create_all picks up Phase 1, 2 and 3 tables
-import opener.ingest.history.models  # noqa: F401
-import opener.outputs.playlist.models  # noqa: F401
-import opener.resolve.models  # noqa: F401
-import opener.score.models  # noqa: F401
-from opener.core.database import DATABASE_URL, Base
+import showcat.ingest.history.models  # noqa: F401
+import showcat.outputs.playlist.models  # noqa: F401
+import showcat.resolve.models  # noqa: F401
+import showcat.score.models  # noqa: F401
+from showcat.core.database import DATABASE_URL, Base
 
 # Connect to the test DB
 engine = create_engine(DATABASE_URL)
@@ -52,8 +52,8 @@ def mock_get_db_session(monkeypatch: MonkeyPatch, db_session: Session) -> None:
         yield db_session
 
     # Core framework
-    monkeypatch.setattr("opener.core.database.get_db_session", mock_session_generator)
-    monkeypatch.setattr("opener.core.base.get_db_session", mock_session_generator)
+    monkeypatch.setattr("showcat.core.database.get_db_session", mock_session_generator)
+    monkeypatch.setattr("showcat.core.base.get_db_session", mock_session_generator)
     # Stage modules that import get_db_session directly
-    monkeypatch.setattr("opener.ingest.history.backfill.get_db_session", mock_session_generator)
+    monkeypatch.setattr("showcat.ingest.history.backfill.get_db_session", mock_session_generator)
 

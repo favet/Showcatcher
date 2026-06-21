@@ -1,4 +1,4 @@
-"""Phase 5.2–5.5 — Discovery playlist tests (offline).
+﻿"""Phase 5.2–5.5 — Discovery playlist tests (offline).
 
 Gate 5 assertions covered here:
   - Dry-run produces a complete, inspectable plan without touching Spotify.
@@ -15,18 +15,18 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from opener.adapters.lastfm.client import LastFmClient
-from opener.adapters.spotify.client import Resolution
-from opener.ingest.events.models import Event
-from opener.ingest.history.models import Artist, ArtistTag, Scrobble
-from opener.outputs.playlist.adapter import PlaylistOutputAdapter
-from opener.outputs.playlist.models import TrackResolution
-from opener.outputs.playlist.writers import (
+from showcat.adapters.lastfm.client import LastFmClient
+from showcat.adapters.spotify.client import Resolution
+from showcat.ingest.events.models import Event
+from showcat.ingest.history.models import Artist, ArtistTag, Scrobble
+from showcat.outputs.playlist.adapter import PlaylistOutputAdapter
+from showcat.outputs.playlist.models import TrackResolution
+from showcat.outputs.playlist.writers import (
     ExportFilePlaylistWriter,
     SpotifyPlaylistWriter,
 )
-from opener.resolve.models import EventMatch
-from opener.score.stage import ScoreStage
+from showcat.resolve.models import EventMatch
+from showcat.score.stage import ScoreStage
 
 REF = datetime(2026, 7, 1, tzinfo=UTC)
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "lastfm"

@@ -1,4 +1,4 @@
-# Architecture — Opener
+# Architecture — Showcat
 
 ## Purpose
 

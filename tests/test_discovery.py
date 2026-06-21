@@ -1,4 +1,4 @@
-"""Phase 4.3–4.5 — Discovery tilt, A/B harness, and explainability.
+﻿"""Phase 4.3–4.5 — Discovery tilt, A/B harness, and explainability.
 
 Gate 4 assertions covered here:
   - The discovery tilt works: holding venue and date constant, a taste-adjacent
@@ -12,13 +12,13 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from opener.cli.explain import explain_show
-from opener.ingest.events.models import Event
-from opener.ingest.history.models import Artist, ArtistTag, Scrobble
-from opener.resolve.models import EventMatch
-from opener.score.models import EventScore
-from opener.score.scorer import ScoreSignals, ab_diff
-from opener.score.stage import ScoreStage
+from showcat.cli.explain import explain_show
+from showcat.ingest.events.models import Event
+from showcat.ingest.history.models import Artist, ArtistTag, Scrobble
+from showcat.resolve.models import EventMatch
+from showcat.score.models import EventScore
+from showcat.score.scorer import ScoreSignals, ab_diff
+from showcat.score.stage import ScoreStage
 
 REF = datetime(2026, 7, 1, tzinfo=UTC)
 

@@ -1,6 +1,6 @@
 # Opener — Project Plan
 
-> Working name: **Opener** (placeholder — openers are where discovery lives). Rename freely; the name only appears in docs, not in logic.
+> **Showcat** — Portland live music discovery. Python package: `showcat`. GitHub: `favet/showcat`. Live at `showcat.favet.net`.
 
 ## How to use this plan
 

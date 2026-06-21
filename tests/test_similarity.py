@@ -1,11 +1,11 @@
-"""Phase 4.2 — Artist similarity tests.
+﻿"""Phase 4.2 — Artist similarity tests.
 
 Gate 4 assertion covered here:
   - Similarity returns plausible neighbors for fixture artists (golden test).
 """
 from pytest import approx
 
-from opener.score.similarity import (
+from showcat.score.similarity import (
     adjacency,
     build_taste_vector,
     cosine,

@@ -1,10 +1,10 @@
-# AGENTS.md — Working Rules for Opener
+# AGENTS.md — Working Rules for Showcat
 
 > This is the **single source of truth** for how agents (Claude Code, Antigravity) work in this repo. `CLAUDE.md` and any `.agents/rules/*` point here. If you change a rule, change it here.
 
 ## What this project is
 
-Opener finds live shows in Portland by artists you'd like — including bands you've *barely heard* — and produces two outputs: a **Spotify discovery playlist** (the hero) weighted toward under-explored artists, and a **ticket digest** for artists you already know, with on-sale dates and links. It learns taste from your listening history with time-decay.
+Showcat finds live shows in Portland by artists you'd like — including bands you've *barely heard* — and produces two outputs: a **Spotify discovery playlist** (the hero) weighted toward under-explored artists, and a **ticket digest** for artists you already know, with on-sale dates and links. It learns taste from your listening history with time-decay.
 
 Read `ARCHITECTURE.md` for the design and `PROJECT_PLAN.md` for the phased build with provable gates.
 

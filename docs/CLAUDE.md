@@ -1,4 +1,4 @@
-# CLAUDE.md
+# CLAUDE.md — Showcat
 
 **Canonical guidance for this repo lives in [`AGENTS.md`](./AGENTS.md). Read it first — it is the source of truth.** This file only adds Claude Code-specific notes. Do not duplicate rules here; if a rule changes, change it in `AGENTS.md` so the two never drift.
 

@@ -1,4 +1,4 @@
-"""Phase 3 — Entity resolution tests.
+﻿"""Phase 3 — Entity resolution tests.
 
 Gate 3 assertions covered here:
   - Resolver maps a known fixture artist correctly (exact match).
@@ -13,11 +13,11 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from opener.ingest.events.models import Event
-from opener.ingest.history.models import Artist
-from opener.resolve.matcher import match_artist
-from opener.resolve.models import EventMatch
-from opener.resolve.stage import ResolveStage
+from showcat.ingest.events.models import Event
+from showcat.ingest.history.models import Artist
+from showcat.resolve.matcher import match_artist
+from showcat.resolve.models import EventMatch
+from showcat.resolve.stage import ResolveStage
 
 
 def _seed_artist(session: Session, name: str, mbid: str | None = None) -> Artist:
@@ -60,7 +60,7 @@ def _seed_event(session: Session, source_id: str, headliner: str, openers: list[
 
 class TestMatcher:
     def test_exact_normalised_match_is_confident(self) -> None:
-        from opener.resolve.matcher import TasteArtist
+        from showcat.resolve.matcher import TasteArtist
 
         taste = [TasteArtist(artist_id=1, raw_name="Modest Mouse", mbid="m-1")]
         result = match_artist("modest mouse", taste)
@@ -70,7 +70,7 @@ class TestMatcher:
         assert result.status == "matched"
 
     def test_mbid_match_wins_outright(self) -> None:
-        from opener.resolve.matcher import TasteArtist
+        from showcat.resolve.matcher import TasteArtist
 
         taste = [TasteArtist(artist_id=7, raw_name="Whatever Name", mbid="abc-123")]
         result = match_artist("Totally Different String", taste, event_mbid="abc-123")
@@ -79,7 +79,7 @@ class TestMatcher:
         assert result.confidence == 1.0
 
     def test_fuzzy_mt_joy_clears_threshold(self) -> None:
-        from opener.resolve.matcher import TasteArtist
+        from showcat.resolve.matcher import TasteArtist
 
         taste = [TasteArtist(artist_id=2, raw_name="Mt. Joy", mbid="mj-1")]
         result = match_artist("Mount Joy", taste)
@@ -89,7 +89,7 @@ class TestMatcher:
         assert result.status == "matched"
 
     def test_ambiguous_lands_in_review_band(self) -> None:
-        from opener.resolve.matcher import TasteArtist
+        from showcat.resolve.matcher import TasteArtist
 
         taste = [TasteArtist(artist_id=3, raw_name="Death Cab for Cutie", mbid=None)]
         result = match_artist("Death Cab", taste)
@@ -98,10 +98,30 @@ class TestMatcher:
         assert 0.55 <= result.confidence < 0.75
 
     def test_no_plausible_candidate_returns_none(self) -> None:
-        from opener.resolve.matcher import TasteArtist
+        from showcat.resolve.matcher import TasteArtist
 
         taste = [TasteArtist(artist_id=4, raw_name="Modest Mouse", mbid=None)]
         assert match_artist("Completely Unrelated XYZ", taste) is None
+
+    def test_single_token_guard_routes_to_review_not_matched(self) -> None:
+        """'The Strike' must not auto-match 'The Strokes' — single-token guard."""
+        from showcat.resolve.matcher import TasteArtist
+
+        taste = [TasteArtist(artist_id=10, raw_name="The Strokes", mbid=None)]
+        result = match_artist("The Strike", taste)
+        # High char similarity (0.857) but must not be "matched" — routes to review.
+        assert result is not None
+        assert result.status == "review", "Single-token guard must route 'The Strike' to review"
+
+    def test_token_subset_guard_routes_to_review_not_matched(self) -> None:
+        """'The Verve Pipe' must not auto-match 'The Verve' — token-subset guard."""
+        from showcat.resolve.matcher import TasteArtist
+
+        taste = [TasteArtist(artist_id=11, raw_name="The Verve", mbid=None)]
+        result = match_artist("The Verve Pipe", taste)
+        # "the verve" tokens ⊂ "the verve pipe" tokens — must route to review.
+        assert result is not None
+        assert result.status == "review", "Token-subset guard must route 'The Verve Pipe' to review"
 
 
 # ---------------------------------------------------------------------------

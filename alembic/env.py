@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 from logging.config import fileConfig
 
@@ -25,7 +25,7 @@ if db_url:
     config.set_main_option("sqlalchemy.url", db_url)
 
 # target_metadata will be imported from our models module
-from opener.core.database import Base
+from showcat.core.database import Base
 target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:

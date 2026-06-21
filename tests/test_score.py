@@ -1,4 +1,4 @@
-"""Phase 3 — Scoring tests.
+﻿"""Phase 3 — Scoring tests.
 
 Gate 3 assertion covered here:
   - Every scored show persists its full term breakdown (no black box).
@@ -11,12 +11,12 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from opener.ingest.events.models import Event
-from opener.ingest.history.models import Artist, Scrobble
-from opener.resolve.models import EventMatch
-from opener.score.models import EventScore
-from opener.score.scorer import SCORING_VERSION, ScoreSignals, compute_score
-from opener.score.stage import ScoreStage
+from showcat.ingest.events.models import Event
+from showcat.ingest.history.models import Artist, Scrobble
+from showcat.resolve.models import EventMatch
+from showcat.score.models import EventScore
+from showcat.score.scorer import SCORING_VERSION, ScoreSignals, compute_score
+from showcat.score.stage import ScoreStage
 
 REF = datetime(2026, 7, 1, tzinfo=UTC)
 

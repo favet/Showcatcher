@@ -1,4 +1,4 @@
-"""Phase 4.1 — Artist tag ingest tests.
+﻿"""Phase 4.1 — Artist tag ingest tests.
 
 Verifies the Last.fm top-tags adapter method parses the committed fixture and
 that ArtistTagStage stores tag vectors idempotently.
@@ -13,11 +13,11 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from opener.adapters.lastfm.client import LastFmClient
-from opener.ingest.events.models import Event
-from opener.ingest.history.models import Artist, ArtistTag
-from opener.ingest.history.tag_ingest import ArtistTagStage
-from opener.resolve.models import EventMatch
+from showcat.adapters.lastfm.client import LastFmClient
+from showcat.ingest.events.models import Event
+from showcat.ingest.history.models import Artist, ArtistTag
+from showcat.ingest.history.tag_ingest import ArtistTagStage
+from showcat.resolve.models import EventMatch
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "lastfm"
 

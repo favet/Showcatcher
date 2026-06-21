@@ -1,4 +1,4 @@
-"""Phase 2 — Event Ingest tests.
+﻿"""Phase 2 — Event Ingest tests.
 
 Gate 2 assertions:
   - One source ingests ≥1 real fixture event into the normalised schema.
@@ -17,13 +17,13 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from opener.adapters.sources.base import BaseSourceAdapter, RawEvent
-from opener.adapters.sources.stub.adapter import StubAdapter
-from opener.adapters.sources.ticketmaster.adapter import TicketmasterAdapter
-from opener.core.database import DeadLetter
-from opener.ingest.events.models import Event, EventChange, SourceHealth
-from opener.ingest.events.snapshot import EventSnapshotStage
-from opener.ingest.events.source_health import SourceHealthStage
+from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
+from showcat.adapters.sources.stub.adapter import StubAdapter
+from showcat.adapters.sources.ticketmaster.adapter import TicketmasterAdapter
+from showcat.core.database import DeadLetter
+from showcat.ingest.events.models import Event, EventChange, SourceHealth
+from showcat.ingest.events.snapshot import EventSnapshotStage
+from showcat.ingest.events.source_health import SourceHealthStage
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "ticketmaster"
 
