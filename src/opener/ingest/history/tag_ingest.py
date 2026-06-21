@@ -12,22 +12,31 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import CursorResult, select
+from sqlalchemy import CursorResult, exists, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from opener.adapters.lastfm.client import LastFmClient
 from opener.core.base import BaseStage
 from opener.ingest.history.models import Artist, ArtistTag
+from opener.resolve.models import EventMatch
 
 logger = logging.getLogger(__name__)
 
 
 class ArtistTagStage(BaseStage):
-    """Populate artist_tags from Last.fm artist.getTopTags for resolved artists."""
+    """Populate artist_tags from Last.fm artist.getTopTags.
 
-    def __init__(self, client: LastFmClient | None = None) -> None:
+    `matched_only` restricts the fetch to artists that have a matched upcoming
+    event — the only artists whose adjacency actually affects a playlist — so a
+    live run makes a few dozen calls instead of one per taste artist.
+    """
+
+    def __init__(
+        self, client: LastFmClient | None = None, matched_only: bool = False
+    ) -> None:
         self._client = client
+        self._matched_only = matched_only
 
     @property
     def stage_name(self) -> str:
@@ -44,7 +53,15 @@ class ArtistTagStage(BaseStage):
 
     def _run(self, session: Session, *args: Any, **kwargs: Any) -> int:  # noqa: ARG002
         client = self._build_client()
-        artists = session.execute(select(Artist)).scalars().all()
+        query = select(Artist)
+        if self._matched_only:
+            query = query.where(
+                exists().where(
+                    EventMatch.artist_id == Artist.id,
+                    EventMatch.status == "matched",
+                )
+            )
+        artists = session.execute(query).scalars().all()
         now = datetime.now(UTC)
         rows_written = 0
 

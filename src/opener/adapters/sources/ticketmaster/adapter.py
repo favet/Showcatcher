@@ -7,12 +7,15 @@ Configuration (env vars):
     TICKETMASTER_API_KEY  — required
     TICKETMASTER_VENUE_IDS — comma-separated venue IDs (e.g. KovZ917A9v!,...)
 
-Venue IDs for key Portland venues (look up via /venues.json?city=Portland&stateCode=OR):
-    Crystal Ballroom  : KovZ917A9v!
-    Hawthorne Theatre : KovZpZAEdkaA
-    Wonder Ballroom   : KovZpZAEd1aA
-    Roseland Theater  : KovZpZAEkdaA
-    McMenamins (Crystal) same as Crystal Ballroom above
+Venue IDs for key Portland venues (verified via /venues.json?keyword=...&stateCode=OR):
+    Crystal Ballroom            : rZ7HnEZaeyv
+    Wonder Ballroom             : KovZpa9hBe
+    Roseland Theater            : KovZpap9re
+    Hawthorne Theatre           : KovZpZAkn7IA
+    Aladdin Theater             : KovZpa3qfe
+    Revolution Hall             : KovZpZAEkdIA
+    Doug Fir Lounge             : KovZpZA1k1EA
+    Arlene Schnitzer Concert Hall: KovZpZAEkkJA
 
 These are stored in config, NOT hardcoded in logic.
 """
@@ -30,12 +33,16 @@ logger = logging.getLogger(__name__)
 
 TM_BASE_URL = "https://app.ticketmaster.com/discovery/v2"
 
-# Default Portland music venue IDs — configurable via env
+# Default Portland music venue IDs (verified) — configurable via env
 DEFAULT_VENUE_IDS = ",".join([
-    "KovZ917A9v!",   # Crystal Ballroom
-    "KovZpZAEdkaA",  # Hawthorne Theatre
-    "KovZpZAEd1aA",  # Wonder Ballroom
-    "KovZpZAEkdaA",  # Roseland Theater
+    "rZ7HnEZaeyv",   # Crystal Ballroom
+    "KovZpa9hBe",    # Wonder Ballroom
+    "KovZpap9re",    # Roseland Theater
+    "KovZpZAkn7IA",  # Hawthorne Theatre
+    "KovZpa3qfe",    # Aladdin Theater
+    "KovZpZAEkdIA",  # Revolution Hall
+    "KovZpZA1k1EA",  # Doug Fir Lounge
+    "KovZpZAEkkJA",  # Arlene Schnitzer Concert Hall
 ])
 
 

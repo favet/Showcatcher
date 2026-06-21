@@ -138,6 +138,30 @@ class TestHistoryBackfillStage:
             "Re-running backfill produced duplicate scrobbles — idempotency broken"
         )
 
+    def test_since_ts_bounds_the_backfill(
+        self,
+        db_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Passing since_ts pushes the `from` floor to the Last.fm request."""
+        monkeypatch.setenv("LASTFM_API_KEY", "fake")
+        monkeypatch.setenv("LASTFM_USER", "testuser")
+        captured: dict[str, Any] = {}
+
+        def fake_get(_self: object, params: dict[str, Any]) -> dict[str, Any]:
+            captured["from"] = params.get("from")
+            return {
+                "recenttracks": {
+                    "track": [],
+                    "@attr": {"page": "1", "totalPages": "1", "total": "0"},
+                }
+            }
+
+        with patch.object(LastFmClient, "_get", fake_get):
+            HistoryBackfillStage()._run(db_session, since_ts=1_700_000_000)
+
+        assert captured["from"] == 1_700_000_000
+
 
 # ---------------------------------------------------------------------------
 # Incremental Stage

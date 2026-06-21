@@ -99,6 +99,13 @@ class HistoryBackfillStage(BaseStage):
             if last_run and last_run.run_metadata:
                 from_ts = last_run.run_metadata.get("last_scrobble_ts")
 
+        # Optional bounded backfill: only pull scrobbles at/after `since_ts`.
+        # Lets a first run cover recent history (where decayed affinity weight
+        # lives) instead of a full multi-year pull. Takes the later of the two.
+        since_ts = kwargs.get("since_ts")
+        if since_ts is not None and (from_ts is None or int(since_ts) > from_ts):
+            from_ts = int(since_ts)
+
         inserted = 0
         latest_ts: int | None = None
         page = 1
