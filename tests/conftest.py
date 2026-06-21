@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 import opener.ingest.events.models  # noqa: F401
 
-# Import all models so Base.metadata.create_all picks up Phase 1 and 2 tables
+# Import all models so Base.metadata.create_all picks up Phase 1, 2 and 3 tables
 import opener.ingest.history.models  # noqa: F401
+import opener.resolve.models  # noqa: F401
+import opener.score.models  # noqa: F401
 from opener.core.database import DATABASE_URL, Base
 
 # Connect to the test DB

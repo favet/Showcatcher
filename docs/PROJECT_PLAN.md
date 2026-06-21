@@ -101,13 +101,13 @@ A unit of work is done only when **all** of these are true:
 - **3.4 End-to-end run** — one command runs the whole pipeline on fixtures, deterministically.
 
 ### Exit Gate 3 (provable)
-- [ ] Resolver maps a known fixture artist correctly; the fuzzy case ("Mt. Joy" / "Mount Joy") resolves with confidence ≥ threshold (test).
-- [ ] Low-confidence/ambiguous matches go to a **review queue** — never silently matched or dropped (test).
-- [ ] Every digest entry exposes its score breakdown — asserted by a test (no black box).
-- [ ] The full pipeline runs end-to-end on fixtures and produces a **deterministic** digest (golden test).
-- [ ] Every digest entry includes `ticket_url` and `on_sale_date` (test).
+- [x] Resolver maps a known fixture artist correctly; the fuzzy case ("Mt. Joy" / "Mount Joy") resolves with confidence ≥ threshold (test). *(Proven by `test_fuzzy_mt_joy_clears_threshold` and `test_fuzzy_match_persisted_with_confidence` in `tests/test_resolve.py`; exact path by `test_exact_match_persisted_as_matched`)*
+- [x] Low-confidence/ambiguous matches go to a **review queue** — never silently matched or dropped (test). *(Proven by `test_ambiguous_goes_to_review_queue_not_dropped` and `test_unrelated_artist_is_not_matched` in `tests/test_resolve.py`)*
+- [x] Every digest entry exposes its score breakdown — asserted by a test (no black box). *(Proven by `test_every_entry_exposes_score_breakdown` in `tests/test_pipeline.py` and `test_score_persists_full_breakdown` in `tests/test_score.py`)*
+- [x] The full pipeline runs end-to-end on fixtures and produces a **deterministic** digest (golden test). *(Proven by `test_pipeline_matches_golden_digest` and `test_pipeline_is_deterministic` in `tests/test_pipeline.py`, against `tests/fixtures/digest/expected_digest.json`)*
+- [x] Every digest entry includes `ticket_url` and `on_sale_date` (test). *(Proven by `test_every_entry_has_ticket_url_and_on_sale_date` in `tests/test_pipeline.py`)*
 
-> **Open decision (see DECISIONS.md OQ5):** whether to ship the Phase 3 digest as a standalone tool for a while, or treat Phase 3 purely as a proving ground and hold all user-facing output until the playlist (Phase 5). Resolve before exiting this phase.
+> **Open decisions remaining before this phase is formally exited:** OQ4 (ticket digest delivery channel) and OQ5 (ship the Phase 3 digest standalone vs. hold all user-facing output until the playlist). The pipeline and digest *artifact* are built and proven; only the product decisions are pending — see DECISIONS.md.
 
 ---
 

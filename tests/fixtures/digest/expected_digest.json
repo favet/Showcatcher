@@ -1,0 +1,41 @@
+{
+  "scoring_version": "exact-match-v1",
+  "entries": [
+    {
+      "headliner": "Modest Mouse",
+      "venue": "Crystal Ballroom",
+      "date": "2026-07-15",
+      "source": "fixture_source",
+      "source_id": "EV1",
+      "score_total": 2.9616,
+      "score_terms": {
+        "taste": 2.9616,
+        "adjacency": 0.0,
+        "discovery": 0.0,
+        "recency": 0.0,
+        "distance": 0.0
+      },
+      "matched_artists": ["Built to Spill", "Modest Mouse"],
+      "ticket_url": "https://example.com/EV1",
+      "on_sale_date": "2026-06-01"
+    },
+    {
+      "headliner": "Mount Joy",
+      "venue": "Wonder Ballroom",
+      "date": "2026-07-18",
+      "source": "fixture_source",
+      "source_id": "EV2",
+      "score_total": 0.9755,
+      "score_terms": {
+        "taste": 0.9755,
+        "adjacency": 0.0,
+        "discovery": 0.0,
+        "recency": 0.0,
+        "distance": 0.0
+      },
+      "matched_artists": ["Mt. Joy"],
+      "ticket_url": "https://example.com/EV2",
+      "on_sale_date": "2026-06-05"
+    }
+  ]
+}
