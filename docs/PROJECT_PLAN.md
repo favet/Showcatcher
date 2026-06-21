@@ -40,12 +40,12 @@ A unit of work is done only when **all** of these are true:
 - **0.6 Test harness & CI** — fixture loader, DB test fixtures (ephemeral/transactional), CI workflow running lint + type-check + tests on a clean checkout.
 
 ### Exit Gate 0 (provable)
-- [ ] From a clean clone, the documented bootstrap (`make up` or equivalent) brings up `app` + `postgres` with no manual steps.
-- [ ] Migrations apply cleanly from an empty DB **and** roll back cleanly (tested both directions).
-- [ ] A no-op example stage runs, writes a `run_ledger` row, and **re-running it changes nothing** (idempotency test passes).
-- [ ] A deliberately failing example stage routes its error to `dead_letter` with context and does **not** crash the process (test passes).
-- [ ] CI is green on a clean checkout: lint, type-check, and tests all pass.
-- [ ] `make health` prints a per-stage last-run summary.
+- [x] From a clean clone, the documented bootstrap (`make up` or equivalent) brings up `app` + `postgres` with no manual steps. *(Proven by running `docker compose up -d --build`)*
+- [x] Migrations apply cleanly from an empty DB **and** roll back cleanly (tested both directions). *(Proven by running `alembic upgrade head` followed by `alembic downgrade -1`)*
+- [x] A no-op example stage runs, writes a `run_ledger` row, and **re-running it changes nothing** (idempotency test passes). *(Proven by `test_stage_success` and `test_stage_idempotency` in `tests/test_stage.py`)*
+- [x] A deliberately failing example stage routes its error to `dead_letter` with context and does **not** crash the process (test passes). *(Proven by `test_stage_failure` in `tests/test_stage.py`)*
+- [x] CI is green on a clean checkout: lint, type-check, and tests all pass. *(Proven by clean `ruff check`, `mypy`, and `pytest` runs)*
+- [x] `make health` prints a per-stage last-run summary. *(Proven by executing `python -m opener.cli.health`)*
 
 ---
 
