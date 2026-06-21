@@ -98,3 +98,32 @@ class LastFmClient:
             },
         )
         return data
+
+    def get_top_tags(
+        self, artist: str, mbid: str | None = None
+    ) -> list[tuple[str, float]]:
+        """Return an artist's top genre/style tags as (name, weight) pairs.
+
+        Uses artist.getTopTags. Last.fm tag `count` is 0–100; it is returned
+        verbatim as the weight so the taste vector can normalise downstream.
+        Prefers MBID lookup when available (more precise than name).
+        """
+        params: dict[str, Any] = {"method": "artist.gettoptags", "autocorrect": 1}
+        if mbid:
+            params["mbid"] = mbid
+        else:
+            params["artist"] = artist
+
+        data = self._get(params)
+        raw_tags = data.get("toptags", {}).get("tag", [])
+        tags: list[tuple[str, float]] = []
+        for entry in raw_tags:
+            name = entry.get("name")
+            if not name:
+                continue
+            try:
+                weight = float(entry.get("count", 0))
+            except (TypeError, ValueError):
+                weight = 0.0
+            tags.append((name, weight))
+        return tags

@@ -60,6 +60,12 @@ Dev-mode apps now require the owner to hold Premium. If not Premium, pivot the b
 ### OQ3 — Decay half-life default *(Phase 6 tuning)*
 Starting placeholder is a tunable parameter (lean: ~8 weeks), calibrated against real output. Not fixed.
 
+### D12 — Phase 4 scoring engine: tag-cosine adjacency + play-count discovery tilt *(Phase 4)*
+**Decision:** Adjacency is the cosine similarity of an artist's Last.fm tag vector to the affinity-weighted **taste vector**. Discovery is `adjacency / (1 + play_count)` — high only when an artist is taste-adjacent **and** barely played. The unified scorer combines named term *signals* (taste/adjacency/discovery/recency/distance) as a weighted sum selected by `scoring_version`; the persisted breakdown stores each term's contribution so totals are explainable, and `ab_diff` runs two versions on identical signals. Two versions ship: `exact-match-v1` (taste-only, raw — the Phase 3 precision digest) and `discovery-v1` (the hero tilt; taste is saturated `taste/(taste+k)` so an unbounded affinity can't swamp the discovery term).
+**Why:** Tag-cosine keeps similarity offline/deterministic and behind the existing Last.fm adapter (no new vendor); the play-count penalty is the simplest explainable formula that produces the required tilt. Saturation keeps version weights meaningful rather than gamed to fixture magnitudes.
+**Status:** Structure firm. **Weights, the saturation constant `k`, and the half-life are provisional placeholders tuned in Phase 6** (see OQ3). `discovery-v1` is not yet the production pointer — `SCORING_VERSION` stays `exact-match-v1` until the playlist wires discovery in (Phase 5).
+**Alternative considered:** ListenBrainz similar-artists for adjacency — deferred; tag overlap is sufficient and dependency-free for now (the plan allows "tag overlap and/or ListenBrainz").
+
 ### D11 — Ticket digest delivery channel: email (daily) *(resolved Phase 3, OQ4)*
 **Decision:** When the ticket digest ships, it is delivered as a **daily digest email**.
 **Why:** Simplest channel with no extra service to run; matches the plan's lean. The digest is already built behind an output adapter (`DigestOutputAdapter`), so the email sender is an additive renderer/transport, not a pipeline change. Other channels (ntfy/Discord/feed) remain swappable behind the same adapter if wanted later.

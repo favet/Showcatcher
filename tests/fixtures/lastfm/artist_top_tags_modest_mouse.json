@@ -1,0 +1,11 @@
+{
+  "toptags": {
+    "tag": [
+      {"name": "indie rock", "count": 100, "url": "https://www.last.fm/tag/indie+rock"},
+      {"name": "indie", "count": 86, "url": "https://www.last.fm/tag/indie"},
+      {"name": "alternative", "count": 61, "url": "https://www.last.fm/tag/alternative"},
+      {"name": "lo-fi", "count": 24, "url": "https://www.last.fm/tag/lo-fi"}
+    ],
+    "@attr": {"artist": "Modest Mouse"}
+  }
+}

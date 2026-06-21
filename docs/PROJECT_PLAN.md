@@ -123,10 +123,12 @@ A unit of work is done only when **all** of these are true:
 - **4.5 Score explainability** — every scored show persists its full term breakdown; a CLI answers "why did show X score Y?".
 
 ### Exit Gate 4 (provable)
-- [ ] Similarity returns plausible neighbors for fixture artists (golden test).
-- [ ] **The discovery tilt works:** holding venue and date constant, a taste-adjacent artist with low play-count scores *higher* than an already-heavy-rotation artist (test asserts the ordering).
-- [ ] Scoring config is versioned; two versions run on the same input can be diffed (A/B harness exists, test).
-- [ ] Every scored show persists its full term breakdown; `explain <show>` prints it (demonstrated).
+- [x] Similarity returns plausible neighbors for fixture artists (golden test). *(Proven by `test_golden_neighbors_for_indie_artist` in `tests/test_similarity.py`)*
+- [x] **The discovery tilt works:** holding venue and date constant, a taste-adjacent artist with low play-count scores *higher* than an already-heavy-rotation artist (test asserts the ordering). *(Proven by `test_low_playcount_adjacent_artist_outranks_heavy_rotation` in `tests/test_discovery.py`; contrast `test_exact_match_v1_does_not_tilt`)*
+- [x] Scoring config is versioned; two versions run on the same input can be diffed (A/B harness exists, test). *(Proven by `test_versions_diff_on_same_signals` and `test_two_versions_coexist_in_db` in `tests/test_discovery.py`; `ab_diff` in `score/scorer.py`)*
+- [x] Every scored show persists its full term breakdown; `explain <show>` prints it (demonstrated). *(Proven by `test_explain_prints_breakdown` in `tests/test_discovery.py` and `src/opener/cli/explain.py`; persistence by `test_score_persists_full_breakdown` in `tests/test_score.py`)*
+
+> **Scoring weights are provisional.** The `discovery-v1` term weights, the taste-saturation constant, and the decay half-life are placeholders chosen so the tilt is provable — they are explicitly tuned against real output in Phase 6 (see DECISIONS OQ3/D12). The *structure* (named, versioned, decomposable terms) is fixed; the numbers are not.
 
 ---
 

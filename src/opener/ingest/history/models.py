@@ -1,7 +1,16 @@
 """ORM models for Phase 1 listening-history tables."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from opener.core.database import Base
@@ -45,6 +54,27 @@ class Scrobble(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     artist: Mapped["Artist | None"] = relationship(back_populates="scrobbles")
+
+
+class ArtistTag(Base):
+    """One genre/tag weight for an artist (Last.fm top tags). Unique per (artist, tag).
+
+    These per-artist tag vectors are the raw material for the per-user taste
+    vector and for artist-to-artist adjacency (Phase 4 discovery engine).
+    """
+
+    __tablename__ = "artist_tags"
+    __table_args__ = (
+        UniqueConstraint("artist_id", "tag", name="uq_artist_tags_artist_tag"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    artist_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("artists.id", ondelete="CASCADE"), nullable=False
+    )
+    tag: Mapped[str] = mapped_column(String(200), nullable=False)
+    weight: Mapped[float] = mapped_column(Float, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class ArtistUnresolvedQueue(Base):

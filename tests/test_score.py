@@ -15,7 +15,7 @@ from opener.ingest.events.models import Event
 from opener.ingest.history.models import Artist, Scrobble
 from opener.resolve.models import EventMatch
 from opener.score.models import EventScore
-from opener.score.scorer import SCORING_VERSION, compute_score
+from opener.score.scorer import SCORING_VERSION, ScoreSignals, compute_score
 from opener.score.stage import ScoreStage
 
 REF = datetime(2026, 7, 1, tzinfo=UTC)
@@ -72,13 +72,28 @@ def _seed_matched_event(session: Session, source_id: str, artist: Artist) -> Eve
 
 
 class TestScorer:
-    def test_total_is_sum_of_terms(self) -> None:
-        breakdown = compute_score(taste=0.5, adjacency=0.1)
-        assert breakdown.total == 0.6
+    def test_exact_match_v1_is_taste_only(self) -> None:
+        # exact-match-v1 weights: taste 1.0, everything else 0.
+        breakdown = compute_score(ScoreSignals(taste=0.5, adjacency=0.1), "exact-match-v1")
         assert breakdown.taste == 0.5
+        assert breakdown.adjacency == 0.0
+        assert breakdown.total == 0.5
+
+    def test_contributions_sum_to_total(self) -> None:
+        breakdown = compute_score(
+            ScoreSignals(taste=2.0, adjacency=0.4, discovery=0.3, recency=0.5), "discovery-v1"
+        )
+        assert breakdown.total == round(
+            breakdown.taste
+            + breakdown.adjacency
+            + breakdown.discovery
+            + breakdown.recency
+            + breakdown.distance,
+            6,
+        )
 
     def test_breakdown_exposes_all_named_terms(self) -> None:
-        terms = compute_score(taste=0.3).as_terms()
+        terms = compute_score(ScoreSignals(taste=0.3), SCORING_VERSION).as_terms()
         assert set(terms) == {"taste", "adjacency", "discovery", "recency", "distance"}
 
 
