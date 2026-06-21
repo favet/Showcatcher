@@ -51,16 +51,13 @@ Format: `Dn — Title — Decision — Why — Status`.
 ### D13 — Spotify account is Premium; live-write bridge path chosen *(resolved Phase 5, OQ1)*
 **Decision:** The owner's Spotify account holds Premium (confirmed 2026-06-21), so the **live-write** bridge path is taken: select tracks on Last.fm, resolve URIs via Spotify `/search`, write via `POST /me/playlists` + replace items. The export-file path remains implemented as a fallback stub (`ExportFilePlaylistWriter`) proving swappability, not as the primary.
 **Why:** Dev-mode apps now require the owner to hold Premium; Premium is present, so the hero output can write a real playlist.
-**Status:** Resolved. Live write is code-complete and mock-tested. See D14 for the live-run finding.
+**Status:** Resolved. Live write verified against the real account — see D14.
 
-### D14 — Spotify Development-mode apps cannot write playlists; Extended Quota Mode required *(Phase 5 live run, 2026-06-21)*
-**Finding:** A full live run succeeded end to end — 16,643 scrobbles ingested, 100 Portland shows, 17 scored, 15 tracks resolved to real Spotify URIs via `/search` (dry-run works). The **write** step fails: both `POST /users/{id}/playlists` (create) and `PUT /playlists/{id}/tracks` (modify an existing playlist) return **403 Forbidden** even with: Premium confirmed (`/me` `product: premium`), the account allowlisted in User Management, scopes `playlist-modify-private playlist-modify-public` granted, and a fresh forced re-consent. `/me` and `/search` (reads) work; only writes are blocked.
-**Conclusion:** Spotify gates **all** programmatic playlist writes behind **Extended Quota Mode** (app review). Premium is necessary but not sufficient; a Development-mode app cannot create or modify playlists via the API. This is the API contraction the bridge was designed around (D6).
-**Consequences / paths:**
-  1. **Extended Quota Mode** — request it on the app dashboard (review process; may need a privacy policy / app description). Once approved, `python -m opener.cli.playlist write` works unattended, no code change.
-  2. **Manual add** — the dry-run emits real, correct Spotify track URIs; the user can add them to a playlist by hand (delivered as clickable links).
-  3. **Export-file fallback** (`ExportFilePlaylistWriter`) — the swappable writer proven in tests; produces an inspectable artifact without the API.
-**Status:** Gate 5 "live write" item is **blocked by Spotify policy, not by our code** — the write path is implemented, typed, and mock-tested; it cannot be checked until Extended Quota Mode is granted. Everything upstream (ingest → score → resolve URIs → dry-run plan) is verified against the real account.
+### D14 — Live write works on Feb-2026 endpoints (/me/playlists, /playlists/{id}/items) *(Phase 5 live run, 2026-06-21)*
+**Finding:** A full live run succeeded end to end — 16,643 scrobbles ingested, 100 Portland shows, 17 scored, 15 tracks resolved to real Spotify URIs via `/search`, and **15 tracks written to a real Spotify playlist** (`2WyamYcCikdYEQBRivJhk2`, read back as 15 items).
+**Root cause of the initial 403:** The first `SpotifyClient` used endpoints **removed in February 2026** — `POST /users/{id}/playlists` (create) and `PUT /playlists/{id}/tracks` (write items). Spotify returns **403 Forbidden** (not 404) for these removed endpoints, which masqueraded as a permissions/quota problem and sent diagnosis down the wrong path (Premium, allowlist, scopes were all already correct). Switching to the current endpoints — **`POST /me/playlists`** to create and **`PUT /playlists/{id}/items`** to write items — fixed it immediately. ARCHITECTURE.md had specified `/me/playlists` all along; the client had diverged.
+**Lesson:** A Spotify 403 with valid auth can mean a **deprecated endpoint**, not a permission failure. Check the endpoint against the current API before chasing account/scope causes.
+**Status:** Resolved. Live write is verified; Gate 5 fully met. Premium remains the dev-mode prerequisite (D13); no Extended Quota Mode was needed for personal-account playlist writes.
 
 ### D9 — Event source: Ticketmaster Discovery API *(resolved Phase 2.1)*
 **Decision:** Use the Ticketmaster Discovery API (`https://app.ticketmaster.com/discovery/v2/`) as the first (and primary) event source adapter.

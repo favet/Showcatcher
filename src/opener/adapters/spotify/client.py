@@ -128,14 +128,21 @@ class SpotifyClient:
         return str(self._get("/me", {}).get("id", ""))
 
     def create_playlist(self, name: str, public: bool, description: str = "") -> str:
-        """Create a playlist for the current user; return its id."""
-        user_id = self.current_user_id()
+        """Create a playlist for the current user; return its id.
+
+        Uses POST /me/playlists (the Feb-2026 endpoint; the older
+        /users/{id}/playlists form is gone).
+        """
         data = self._post(
-            f"/users/{user_id}/playlists",
+            "/me/playlists",
             {"name": name, "public": public, "description": description},
         )
         return str(data["id"])
 
     def replace_items(self, playlist_id: str, uris: list[str]) -> None:
-        """Replace all items in a playlist (idempotent refresh)."""
-        self._put(f"/playlists/{playlist_id}/tracks", {"uris": uris})
+        """Replace all items in a playlist (idempotent refresh).
+
+        Uses PUT /playlists/{id}/items (Feb-2026 rename; the older
+        /playlists/{id}/tracks endpoint is gone).
+        """
+        self._put(f"/playlists/{playlist_id}/items", {"uris": uris})

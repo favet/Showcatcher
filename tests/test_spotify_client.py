@@ -83,8 +83,9 @@ class TestPlaylistWrite:
 
         playlist_id = client.create_playlist("My Playlist", public=False)
         assert playlist_id == "playlist-9"
-        assert "users/user-1/playlists" in calls["post_url"]
+        # Feb-2026 endpoints: create via /me/playlists, write items via /items.
+        assert calls["post_url"].endswith("/me/playlists")
 
         client.replace_items(playlist_id, ["spotify:track:a", "spotify:track:b"])
-        assert "playlists/playlist-9/tracks" in calls["put_url"]
+        assert calls["put_url"].endswith("/playlists/playlist-9/items")
         assert calls["put_body"] == {"uris": ["spotify:track:a", "spotify:track:b"]}
