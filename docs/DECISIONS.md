@@ -60,8 +60,12 @@ Dev-mode apps now require the owner to hold Premium. If not Premium, pivot the b
 ### OQ3 — Decay half-life default *(Phase 6 tuning)*
 Starting placeholder is a tunable parameter (lean: ~8 weeks), calibrated against real output. Not fixed.
 
-### OQ4 — Ticket digest delivery channel
-Email / ntfy / Discord / feed — undecided. Lean: daily digest. **Pick during Phase 3.**
+### D11 — Ticket digest delivery channel: email (daily) *(resolved Phase 3, OQ4)*
+**Decision:** When the ticket digest ships, it is delivered as a **daily digest email**.
+**Why:** Simplest channel with no extra service to run; matches the plan's lean. The digest is already built behind an output adapter (`DigestOutputAdapter`), so the email sender is an additive renderer/transport, not a pipeline change. Other channels (ntfy/Discord/feed) remain swappable behind the same adapter if wanted later.
+**Status:** Decided. Not yet implemented — gated on D10 (no user-facing delivery is wired until Phase 5).
 
-### OQ5 — Ship Phase 3 digest standalone, or hold all output until the playlist?
-Whether the exact-match digest goes live on its own for a while, or Phase 3 is treated purely as a pipeline proving-ground with no user-facing output until Phase 5. **Decide before exiting Phase 3.**
+### D10 — Hold all user-facing output until Phase 5 *(resolved Phase 3, OQ5)*
+**Decision:** Phase 3 is treated purely as a pipeline **proving ground**. The exact-match digest is built and proven (artifact + golden test) but **not** delivered to the user standalone; all user-facing output waits for the Spotify discovery playlist (the hero) in Phase 5.
+**Why:** The valuable job is discovery + getting tickets together (D7). Shipping a standalone digest now would add a delivery/transport surface to maintain before the hero output exists, for marginal benefit. Building the digest as a proving ground still de-risks resolution + scoring end-to-end.
+**Status:** Decided. Proceed to Phase 4 (discovery scoring); revisit delivery (D11) at Phase 5.

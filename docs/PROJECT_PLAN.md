@@ -107,7 +107,7 @@ A unit of work is done only when **all** of these are true:
 - [x] The full pipeline runs end-to-end on fixtures and produces a **deterministic** digest (golden test). *(Proven by `test_pipeline_matches_golden_digest` and `test_pipeline_is_deterministic` in `tests/test_pipeline.py`, against `tests/fixtures/digest/expected_digest.json`)*
 - [x] Every digest entry includes `ticket_url` and `on_sale_date` (test). *(Proven by `test_every_entry_has_ticket_url_and_on_sale_date` in `tests/test_pipeline.py`)*
 
-> **Open decisions remaining before this phase is formally exited:** OQ4 (ticket digest delivery channel) and OQ5 (ship the Phase 3 digest standalone vs. hold all user-facing output until the playlist). The pipeline and digest *artifact* are built and proven; only the product decisions are pending — see DECISIONS.md.
+> **Phase 3 exited.** All gate items proven (above) and the deferred product decisions are resolved: OQ5 → **hold all user-facing output until Phase 5** (Phase 3 is a proving ground; see DECISIONS D10), and OQ4 → **email daily** as the eventual digest channel (DECISIONS D11). No standalone delivery is wired now; next phase is Phase 4.
 
 ---
 
