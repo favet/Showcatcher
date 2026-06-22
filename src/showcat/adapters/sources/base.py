@@ -28,6 +28,9 @@ class RawEvent:
     show_time: time | None = None
     on_sale_date: date | None = None
     ticket_url: str | None = None
+    price: str | None = None
+    image_url: str | None = None
+    sold_out: bool = False
 
 
 class BaseSourceAdapter(abc.ABC):

@@ -42,6 +42,13 @@ DEFAULT_REVIEW_FLOOR = 0.55
 
 _ARTICLES = frozenset({"the", "a", "an"})
 
+# Parenthetical context to strip before fuzzy matching:
+#   "(of La Femme)" — the artist is in a side project
+#   "(formerly X)" — old band name context
+#   "(DJ Set)" / "(live)" / "(acoustic)" — performance format
+_OF_CONTEXT = re.compile(r"\s*\((?:of|formerly|ex-)\s+.+?\)\s*$", re.IGNORECASE)
+_ROLE_CONTEXT = re.compile(r"\s*\((?:DJ\s+[Ss]et|live|acoustic|solo\s+set)\)\s*$", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class MatchCandidate:
@@ -67,6 +74,19 @@ def normalize(name: str) -> str:
     """Lowercase, strip punctuation to spaces, collapse whitespace."""
     lowered = re.sub(r"[^a-z0-9]+", " ", name.lower())
     return re.sub(r"\s+", " ", lowered).strip()
+
+
+def strip_artist_context(name: str) -> str:
+    """Remove parenthetical context from an artist name before matching.
+
+    Handles:
+    - ``"Marlon Magnée (of La Femme)"`` → ``"Marlon Magnée"``
+    - ``"Matthew Dear (DJ set)"`` → ``"Matthew Dear"``
+    - ``"X (formerly Y)"`` → ``"X"``
+    """
+    name = _OF_CONTEXT.sub("", name)
+    name = _ROLE_CONTEXT.sub("", name)
+    return name.strip()
 
 
 def similarity(a: str, b: str) -> float:
@@ -169,6 +189,16 @@ def match_artist(
         if score > best_score:
             best_score = score
             best = ta
+
+    # 3b. If the event name has parenthetical context ("(of Band)", "(DJ Set)"),
+    #     try again with the stripped version; keep whichever yields a better score.
+    stripped_name = strip_artist_context(event_artist_name)
+    if stripped_name != event_artist_name:
+        for ta in taste_artists:
+            score = similarity(stripped_name, ta.raw_name)
+            if score > best_score:
+                best_score = score
+                best = ta
 
     if best is None or best_score < review_floor:
         return None

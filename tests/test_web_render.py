@@ -30,7 +30,7 @@ def _show(**kw: object) -> dict:
 def test_render_includes_provider_label_and_via_markup() -> None:
     html = render_html([_show()], dt.datetime(2026, 6, 21, 12, 0))
     # The Vue template + data both ship in the page; the badge wiring is present.
-    assert "ticket-via" in html
+    assert "tix-pill" in html
     assert "ticket_provider_label" in html
     assert '"ticket_provider": "etix"' in html
     assert "Etix" in html

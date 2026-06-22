@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 from logging.config import fileConfig
 
@@ -26,6 +26,12 @@ if db_url:
 
 # target_metadata will be imported from our models module
 from showcat.core.database import Base
+import showcat.ingest.events.models
+import showcat.ingest.history.models
+import showcat.outputs.playlist.models
+import showcat.resolve.models
+import showcat.score.models
+
 target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:

@@ -117,6 +117,43 @@ def merge_shows_by_identity(raw_shows: list[dict[str, Any]]) -> list[dict[str, A
         rep["ticket_url"] = url
         rep["ticket_provider"] = provider
         rep["ticket_provider_label"] = provider_label(provider)
+
+        # Price precedence: select custom scraper price (source != 'ticketmaster') first, fallback to TM
+        price = None
+        for m in members:
+            if m.get("source") != "ticketmaster" and m.get("price"):
+                price = m["price"]
+                break
+        if not price:
+            for m in members:
+                if m.get("source") == "ticketmaster" and m.get("price"):
+                    price = m["price"]
+                    break
+        rep["price"] = price
+
+        # Ticketmaster placeholder detection
+        is_placeholder_link = False
+        if provider in ("ticketmaster", "ticketweb"):
+            if not price:
+                is_placeholder_link = True
+        rep["is_placeholder_link"] = is_placeholder_link
+
+        # Merge event image
+        event_image_url = None
+        for m in members:
+            if m.get("event_image_url"):
+                event_image_url = m["event_image_url"]
+                break
+        rep["event_image_url"] = event_image_url
+
+        # Merge openers
+        openers = []
+        for m in members:
+            if m.get("openers"):
+                openers = m["openers"]
+                break
+        rep["openers"] = openers
+
         merged.append(rep)
     return merged
 
@@ -202,7 +239,24 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
 
         genres = tags_by_artist.get(artist.id, []) if artist else []
 
-        sort_time = event.show_time or event.doors_time or dt.time()
+        # Time fallback logic:
+        # If doors_time is missing, default to show_time - 1h.
+        # If show_time is missing, default to doors_time + 1h.
+        doors_time = event.doors_time
+        show_time = event.show_time
+        if doors_time is None and show_time is not None:
+            dt_show = dt.datetime.combine(event.date, show_time)
+            dt_doors = dt_show - dt.timedelta(hours=1)
+            doors_time = dt_doors.time()
+        elif show_time is None and doors_time is not None:
+            dt_doors = dt.datetime.combine(event.date, doors_time)
+            dt_show = dt_doors + dt.timedelta(hours=1)
+            show_time = dt_show.time()
+
+        doors_display = fmt_time(doors_time) if doors_time else None
+        show_display = fmt_time(show_time) if show_time else None
+
+        sort_time = show_time or doors_time or dt.time()
         timestamp = int(dt.datetime.combine(event.date, sort_time).timestamp())
 
         if event.date == today:
@@ -222,15 +276,22 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
         shows.append({
             "id": event.id,
             "headliner": event.headliner,
+            "openers": event.openers or [],
             "venue": venue,
             "venue_size": get_venue_size(venue),
             "date": event.date.isoformat(),
             "date_display": date_display,
-            "doors_display": fmt_time(event.doors_time) if event.doors_time else None,
-            "show_display": fmt_time(event.show_time) if event.show_time else None,
+            "doors_display": doors_display,
+            "show_display": show_display,
             "ticket_url": event.ticket_url,
             "ticket_provider": ticket_provider,
             "ticket_provider_label": provider_label(ticket_provider),
+            "price": event.price,
+            "event_image_url": event.image_url,
+            "spotify_artist_image_url": artist.image_url if artist else None,
+            "spotify_album_image_url": artist.album_image_url if artist else None,
+            "spotify_url": artist.spotify_url if artist else None,
+            "album_name": artist.album_name if artist else None,
             "score_total": score_int,
             "matched_artist": artist.raw_name if artist else None,
             "travel_minutes": travel_info["minutes"] if travel_info else None,
@@ -263,42 +324,111 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
     :root {{
-      --bg:           #171410;
-      --surface:      #211E18;
-      --surface-2:    #2A2620;
-      --text:         #EDE5D8;
-      --muted:        #7D7060;
-      --border:       #302B23;
-      --accent:       #E8961A;
-      --accent-dim:   rgba(232,150,26,0.13);
-      --score-hi:     #E8961A;
-      --score-mid:    #8A6830;
-      --score-lo:     #3E3830;
-      --tonight:      #D95F2B;
+      --bg:           #0e0c0a;
+      --surface:      #181512;
+      --surface-2:    #221d17;
+      --text:         #ede5d8;
+      --muted:        #807361;
+      --border:       #2d271e;
+      --accent:       #e8961a;
+      --accent-dim:   rgba(232,150,26,0.15);
+      --score-hi:     #e8961a;
+      --score-mid:    #b3863b;
+      --score-lo:     #524738;
+      --tonight:      #e25822;
       --font:         'Inter', system-ui, sans-serif;
       --mono:         'IBM Plex Mono', 'Courier New', monospace;
     }}
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }}
-    html {{ font-size: 16px; }}
+    html {{ font-size: 16px; scroll-behavior: smooth; }}
     body {{ background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.4; -webkit-font-smoothing: antialiased; }}
     a {{ color: inherit; text-decoration: none; }}
-    button {{ font-family: var(--font); cursor: pointer; }}
+    button {{ font-family: var(--font); cursor: pointer; border: none; background: none; }}
 
     /* ── Header ─────────────────────────────── */
     .site-header {{
-      background: var(--bg);
+      background: rgba(14, 12, 10, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
-      padding: 1rem 1rem 0;
       position: sticky; top: 0; z-index: 20;
+      width: 100%;
+    }}
+    .header-inner {{
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1rem 1.25rem 0.5rem;
     }}
     .brand-row {{
-      display: flex; align-items: baseline; justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 0.75rem;
     }}
-    .brand {{ font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; }}
+    .brand {{ font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }}
     .brand em {{ color: var(--accent); font-style: normal; }}
+    
+    .brand-right {{
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }}
+    .playlist-btn {{
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.25rem 0.6rem;
+      border-radius: 12px;
+      border: 1px solid rgba(29, 185, 84, 0.4);
+      background: rgba(29, 185, 84, 0.05);
+      color: #1db954;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: all 0.15s;
+    }}
+    .playlist-btn:hover {{
+      background: rgba(29, 185, 84, 0.15);
+      border-color: #1db954;
+    }}
     .brand-meta {{ font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }}
     .brand-meta strong {{ color: var(--text); }}
+
+    /* Search bar */
+    .search-row {{
+      position: relative;
+      margin-bottom: 0.75rem;
+    }}
+    .search-input {{
+      width: 100%;
+      padding: 0.6rem 2.2rem 0.6rem 1rem;
+      font-size: 0.85rem;
+      font-family: var(--font);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      outline: none;
+      transition: all 0.15s ease;
+    }}
+    .search-input:focus {{
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(232, 150, 26, 0.4);
+      box-shadow: 0 0 10px rgba(232, 150, 26, 0.1);
+    }}
+    .clear-search {{
+      position: absolute;
+      right: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.1rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0.2rem;
+    }}
+    .clear-search:hover {{
+      color: var(--text);
+    }}
 
     /* Filter chips */
     .filter-row {{
@@ -310,21 +440,23 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .chip {{
       flex-shrink: 0;
       font-size: 0.78rem; font-weight: 500;
-      padding: 0.3rem 0.65rem;
+      padding: 0.35rem 0.75rem;
       border: 1px solid var(--border);
       border-radius: 20px;
-      background: transparent; color: var(--muted);
+      background: rgba(255, 255, 255, 0.02); color: var(--muted);
       transition: all 0.12s;
       white-space: nowrap;
     }}
-    .chip:hover {{ border-color: var(--muted); color: var(--text); }}
+    .chip:hover {{ border-color: var(--muted); color: var(--text); background: rgba(255, 255, 255, 0.05); }}
     .chip.active {{
       background: var(--accent); border-color: var(--accent);
       color: var(--bg); font-weight: 600;
+      box-shadow: 0 0 10px rgba(232, 150, 26, 0.25);
     }}
     .chip.tonight-active {{
       background: var(--tonight); border-color: var(--tonight);
       color: #fff;
+      box-shadow: 0 0 10px rgba(226, 88, 34, 0.25);
     }}
     .chip-divider {{ width: 1px; height: 1.1rem; background: var(--border); flex-shrink: 0; margin: 0 0.1rem; }}
 
@@ -337,56 +469,90 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .result-count {{ font-family: var(--mono); }}
     .sort-toggle {{ display: flex; gap: 0; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }}
     .sort-opt {{
-      padding: 0.2rem 0.55rem; font-size: 0.72rem; font-weight: 500;
+      padding: 0.25rem 0.6rem; font-size: 0.72rem; font-weight: 500;
       background: transparent; color: var(--muted); border: none;
     }}
     .sort-opt.active {{ background: var(--surface-2); color: var(--text); }}
 
     /* ── Layout ─────────────────────────────── */
-    .feed {{ max-width: 720px; margin: 0 auto; padding-bottom: 4rem; }}
+    .feed {{ max-width: 720px; margin: 0 auto; padding: 0.75rem 1.25rem 4rem; }}
 
     /* ── Date header ─────────────────────────── */
     .day-header {{
       position: sticky; top: var(--header-h, 130px); z-index: 10;
       display: flex; justify-content: space-between; align-items: center;
-      padding: 0.45rem 1rem;
-      background: rgba(23,20,16,0.97); backdrop-filter: blur(6px);
+      padding: 0.5rem 0.75rem;
+      background: rgba(14, 12, 10, 0.95); backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--border);
       font-family: var(--mono); font-size: 0.7rem; font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted);
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      border-radius: 4px;
     }}
-    .day-header.is-tonight {{ color: var(--tonight); }}
-    .day-header.is-tomorrow {{ color: var(--accent); }}
+    .day-header.is-tonight {{ color: var(--tonight); border-bottom-color: rgba(226, 88, 34, 0.3); }}
+    .day-header.is-tomorrow {{ color: var(--accent); border-bottom-color: rgba(232, 150, 26, 0.3); }}
     .day-count {{ opacity: 0.6; }}
 
-    /* ── Show row ────────────────────────────── */
-    .show-row {{
-      border-bottom: 1px solid var(--border);
-      padding: 0.6rem 1rem;
+    /* ── Glassmorphic card design ──────────────── */
+    .show-card {{
+      background: rgba(24, 21, 18, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      margin-bottom: 0.75rem;
+      padding: 0.75rem 1rem;
       cursor: pointer;
-      transition: background 0.1s;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       user-select: none; -webkit-user-select: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }}
-    .show-row:hover {{ background: var(--surface); }}
-    .show-row.is-past {{ opacity: 0.35; pointer-events: none; }}
+    .show-card:hover {{
+      background: rgba(34, 30, 25, 0.7);
+      border-color: rgba(232, 150, 26, 0.2);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(232, 150, 26, 0.06);
+    }}
+    .show-card.is-past {{ opacity: 0.35; pointer-events: none; }}
 
     .row-main {{
-      display: flex; align-items: flex-start; gap: 0.75rem;
+      display: flex; align-items: center; gap: 0.75rem;
     }}
 
-    /* Score badge */
-    .score-badge {{
-      flex-shrink: 0; width: 2.25rem;
-      font-family: var(--mono); font-size: 0.95rem; font-weight: 600;
-      text-align: right; line-height: 1.35; padding-top: 0.1rem;
+    .show-thumb-container {{
+      position: relative;
+      width: 2.8rem;
+      height: 2.8rem;
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
     }}
-    .score-badge.hi {{ color: var(--score-hi); }}
-    .score-badge.md {{ color: var(--score-mid); }}
-    .score-badge.lo {{ color: var(--score-lo); }}
-    .score-badge.none {{ color: var(--border); }}
+    .show-thumb {{
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+    }}
+    .show-thumb-fallback {{
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #2a251e 0%, #1a1612 100%);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      color: var(--muted);
+    }}
 
-    /* Show info */
     .show-info {{ flex: 1; min-width: 0; }}
+    .show-headliner-row {{
+      display: flex; align-items: baseline; justify-content: space-between;
+    }}
     .show-headliner {{
       font-size: 0.975rem; font-weight: 600; line-height: 1.25;
       color: var(--text);
@@ -405,56 +571,276 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .show-time.soon {{ color: var(--tonight); opacity: 1; font-weight: 600; }}
     .sub-dot {{ opacity: 0.35; }}
 
-    /* Right side: ticket link + chevron */
-    .row-right {{
-      display: flex; align-items: center; gap: 0.4rem;
-      flex-shrink: 0; padding-top: 0.1rem;
+    .row-genres {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      margin-top: 0.35rem;
     }}
-    .tix-link {{
-      font-size: 1rem; color: var(--accent); opacity: 0.75;
-      line-height: 1; display: block; padding: 0.1rem 0.2rem;
-      transition: opacity 0.1s;
+    .micro-genre {{
+      font-size: 0.62rem;
+      font-weight: 550;
+      padding: 0.08rem 0.35rem;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
     }}
-    .tix-link:hover {{ opacity: 1; }}
-    .tix-link.tm {{ color: var(--muted); opacity: 0.5; }}
-    .chevron {{ font-size: 0.8rem; color: var(--muted); opacity: 0.45; width: 1rem; text-align: center; transition: transform 0.15s; }}
-    .chevron.open {{ transform: scaleY(-1); opacity: 0.7; }}
 
-    /* ── Expanded drawer ─────────────────────── */
+    .score-badge-circle {{
+      display: flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem;
+      border-radius: 50%;
+      font-family: var(--mono); font-size: 0.82rem; font-weight: 700;
+      transition: all 0.2s;
+      flex-shrink: 0;
+      align-self: center;
+    }}
+    .score-badge-circle.hi {{
+      border: 2px solid var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 10px rgba(232, 150, 26, 0.4);
+      background: rgba(232, 150, 26, 0.05);
+    }}
+    .score-badge-circle.md {{
+      border: 2px solid #b3863b;
+      color: #e5b05a;
+      box-shadow: 0 0 8px rgba(179, 134, 59, 0.25);
+      background: rgba(179, 134, 59, 0.03);
+    }}
+    .score-badge-circle.lo {{
+      border: 2px solid #524738;
+      color: #8c7e6c;
+      background: rgba(82, 71, 56, 0.02);
+    }}
+    .score-badge-circle.none {{
+      border: 2px dashed #3a3328;
+      color: #524738;
+    }}
+
+    .row-chevron {{
+      display: flex; align-items: center; justify-content: center;
+      width: 1.25rem; height: 100%;
+      flex-shrink: 0;
+      margin-left: 0.25rem;
+    }}
+    .chevron-arrow {{
+      font-size: 0.9rem;
+      color: var(--muted);
+      opacity: 0.5;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }}
+    .chevron-arrow.open {{
+      transform: rotate(180deg);
+      color: var(--accent);
+      opacity: 0.9;
+    }}
+
+    /* ── Expanded drawer & ticket stub ─────────── */
     .drawer {{
-      padding: 0.65rem 0 0.2rem 3rem;
+      padding-top: 0.5rem;
       animation: fadeSlide 0.18s ease-out;
     }}
     @keyframes fadeSlide {{
       from {{ opacity: 0; transform: translateY(-4px); }}
       to   {{ opacity: 1; transform: translateY(0); }}
     }}
-    .drawer-genres {{ display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.5rem; }}
-    .genre-tag {{
-      font-size: 0.68rem; padding: 0.18rem 0.45rem;
-      border: 1px solid var(--border); border-radius: 3px;
-      color: var(--muted); background: var(--surface);
+
+    .ticket-container {{
+      position: relative;
+      background: #1e1a14;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 8px 24px rgba(0,0,0,0.3);
     }}
-    .drawer-match {{
-      font-size: 0.72rem; color: var(--muted); margin-bottom: 0.55rem;
-      font-style: italic;
+
+    .ticket-body {{
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
     }}
-    .drawer-footer {{
-      display: flex; align-items: center; justify-content: space-between;
+    @media (min-width: 480px) {{
+      .ticket-body {{
+        flex-direction: row;
+        gap: 1rem;
+      }}
+    }}
+
+    .ticket-art-wrap {{
+      flex-shrink: 0;
+      position: relative;
+      width: 76px;
+      height: 76px;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 0 10px rgba(232, 150, 26, 0.15);
+      border: 1px solid rgba(232, 150, 26, 0.25);
+      align-self: flex-start;
+    }}
+
+    .ticket-art {{
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }}
+    .ticket-art-fallback {{
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #2b251d 0%, #15120e 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }}
+
+    .ticket-details {{
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      min-width: 0;
+    }}
+
+    .ticket-openers {{
+      font-size: 0.8rem;
+      color: #c7bdae;
+      line-height: 1.35;
+    }}
+    .ticket-openers strong {{
+      color: var(--muted);
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: block;
+      margin-bottom: 0.1rem;
+    }}
+
+    .ticket-times-row {{
+      display: flex;
+      gap: 1.25rem;
+      margin: 0.2rem 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 0.4rem 0;
+    }}
+
+    .time-slot {{
+      display: flex;
+      flex-direction: column;
+    }}
+    .time-slot .label {{
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }}
+    .time-slot .val {{
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      font-weight: 600;
+    }}
+
+    .ticket-spotify-link {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.78rem;
+      color: #1DB954;
+      font-weight: 600;
+      transition: color 0.15s;
+      align-self: flex-start;
+    }}
+    .ticket-spotify-link:hover {{
+      color: #1ed760;
+      text-decoration: underline;
+    }}
+
+    .ticket-divider-line {{
+      border-top: 1px dashed var(--border);
+      margin: 0.25rem 0;
+      position: relative;
+    }}
+    .ticket-divider-line::before, .ticket-divider-line::after {{
+      content: '';
+      position: absolute;
+      width: 12px; height: 12px;
+      background: var(--bg);
+      border-radius: 50%;
+      top: -6px;
+    }}
+    .ticket-divider-line::before {{
+      left: -17px;
+      border-right: 1px solid rgba(255,255,255,0.03);
+    }}
+    .ticket-divider-line::after {{
+      right: -17px;
+      border-left: 1px solid rgba(255,255,255,0.03);
+    }}
+
+    .ticket-action-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }}
+
+    .price-tag {{
+      display: flex;
+      flex-direction: column;
+    }}
+    .price-tag .label {{
+      font-size: 0.6rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }}
+    .price-tag .val {{
+      font-family: var(--mono);
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent);
+    }}
+
+    .ticket-btn-link {{
+      background: var(--accent);
+      color: var(--bg);
+      font-weight: 700;
+      font-size: 0.8rem;
+      padding: 0.45rem 1rem;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+      box-shadow: 0 4px 10px rgba(232, 150, 26, 0.2);
+    }}
+    .ticket-btn-link:hover {{
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(232, 150, 26, 0.35);
+    }}
+    .ticket-btn-link.placeholder-link {{
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      box-shadow: none;
+    }}
+    .ticket-btn-link.placeholder-link:hover {{
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border-color: var(--muted);
+      transform: none;
     }}
     .travel-label {{
-      font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
+      font-family: var(--mono); font-size: 0.7rem; color: var(--muted);
     }}
-    .tix-btn {{
-      font-size: 0.78rem; font-weight: 600;
-      padding: 0.35rem 0.85rem; border-radius: 4px;
-      background: var(--accent); color: var(--bg);
-      display: inline-flex; align-items: center; gap: 0.35rem;
-      transition: opacity 0.1s;
-    }}
-    .tix-btn:hover {{ opacity: 0.88; }}
-    .tix-btn.tm {{ background: var(--surface-2); color: var(--muted); }}
-    .tix-provider {{ font-size: 0.62rem; font-weight: 500; opacity: 0.8; }}
 
     /* ── Empty state ─────────────────────────── */
     .empty {{
@@ -529,26 +915,36 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
 <div id="app">
 
   <header class="site-header">
-    <div class="brand-row">
-      <div class="brand">Show<em>cat</em></div>
-      <div class="brand-meta"><strong>{{{{ filteredShows.length }}}}</strong> shows &middot; Portland &middot; {ts}</div>
-    </div>
+    <div class="header-inner">
+      <div class="brand-row">
+        <div class="brand">Show<em>cat</em></div>
+        <div class="brand-right">
+          <button v-if="spotifyPlaylistId" class="playlist-btn" @click="playlistOpen = true" title="Open Spotify Playlist">🎵 Taste Playlist</button>
+          <div class="brand-meta"><strong>{{{{ filteredShows.length }}}}</strong> shows &middot; {ts}</div>
+        </div>
+      </div>
 
-    <div class="filter-row">
-      <button class="chip" :class="dateRange === 'tonight' ? 'active tonight-active' : ''" @click="setDate('tonight')">Tonight</button>
-      <button class="chip" :class="{{active: dateRange === 'week'}}" @click="setDate('week')">This Week</button>
-      <button class="chip" :class="{{active: dateRange === 'month'}}" @click="setDate('month')">This Month</button>
-      <button class="chip" :class="{{active: dateRange === 'all'}}" @click="setDate('all')">All</button>
-      <div class="chip-divider"></div>
-      <button class="chip" :class="{{active: matchedOnly}}" @click="matchedOnly = !matchedOnly">Known</button>
-      <button class="chip" :class="{{active: favoritesOnly}}" @click="favsChipClick">&#9733; Favs</button>
-    </div>
+      <div class="search-row">
+        <input type="text" v-model="searchQuery" placeholder="Search headliners, venues, openers, genres..." class="search-input" />
+        <button v-if="searchQuery" class="clear-search" @click="searchQuery = ''">&times;</button>
+      </div>
 
-    <div class="sort-row">
-      <span class="result-count">{{{{ filteredShows.length }}}} results</span>
-      <div class="sort-toggle">
-        <button class="sort-opt" :class="{{active: sortMode === 'date'}}" @click="sortMode = 'date'">By Date</button>
-        <button class="sort-opt" :class="{{active: sortMode === 'score'}}" @click="sortMode = 'score'">By Score</button>
+      <div class="filter-row">
+        <button class="chip" :class="dateRange === 'tonight' ? 'active tonight-active' : ''" @click="setDate('tonight')">Tonight</button>
+        <button class="chip" :class="{{active: dateRange === 'week'}}" @click="setDate('week')">This Week</button>
+        <button class="chip" :class="{{active: dateRange === 'month'}}" @click="setDate('month')">This Month</button>
+        <button class="chip" :class="{{active: dateRange === 'all'}}" @click="setDate('all')">All</button>
+        <div class="chip-divider"></div>
+        <button class="chip" :class="{{active: matchedOnly}}" @click="matchedOnly = !matchedOnly">Known</button>
+        <button class="chip" :class="{{active: favoritesOnly}}" @click="favsChipClick">&#9733; Favs</button>
+      </div>
+
+      <div class="sort-row">
+        <span class="result-count">{{{{ filteredShows.length }}}} results</span>
+        <div class="sort-toggle">
+          <button class="sort-opt" :class="{{active: sortMode === 'date'}}" @click="sortMode = 'date'">By Date</button>
+          <button class="sort-opt" :class="{{active: sortMode === 'score'}}" @click="sortMode = 'score'">By Score</button>
+        </div>
       </div>
     </div>
   </header>
@@ -570,18 +966,23 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       </div>
 
       <div v-for="show in group.shows" :key="show.id"
-           class="show-row"
+           class="show-card"
            :class="{{  'is-past': isPast(show.timestamp) }}"
            @click="toggleExpand(show.id)"
            :data-id="show.id">
 
         <div class="row-main">
-          <div class="score-badge" :class="scoreClass(show.score_total)">
-            {{{{ show.score_total !== null ? show.score_total : '·' }}}}
+          <!-- Thumbnail Image -->
+          <div class="show-thumb-container">
+            <img v-if="getShowImage(show)" :src="getShowImage(show)" class="show-thumb" loading="lazy" />
+            <div v-else class="show-thumb-fallback">🎵</div>
           </div>
 
+          <!-- Show Information -->
           <div class="show-info">
-            <div class="show-headliner">{{{{ show.headliner }}}}</div>
+            <div class="show-headliner-row">
+              <span class="show-headliner">{{{{ show.headliner }}}}</span>
+            </div>
             <div class="show-sub">
               <span class="show-venue">{{{{ show.venue }}}}</span>
               <span class="sub-dot" v-if="show.show_display || show.doors_display">&middot;</span>
@@ -592,34 +993,81 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
                 {{{{ fmtTime(show.doors_display) }}}} <span style="opacity:0.6;font-size:0.65rem">doors</span>
               </span>
             </div>
+            <!-- Micro Genre Tags Inline -->
+            <div class="row-genres" v-if="show.genres && show.genres.length">
+              <span class="micro-genre" v-for="g in show.genres.slice(0, 2)" :key="g">{{{{ g }}}}</span>
+            </div>
           </div>
 
-          <div class="row-right">
-            <a v-if="show.ticket_url"
-               :href="show.ticket_url" target="_blank" rel="noopener"
-               class="tix-link" :class="{{tm: show.ticket_provider === 'ticketmaster' || show.ticket_provider === 'ticketweb'}}"
-               @click.stop title="Buy tickets">&#8599;</a>
-            <span class="chevron" :class="{{open: expandedId === show.id}}">▾</span>
+          <!-- Taste Match Circle Badge -->
+          <div class="score-badge-circle" :class="scoreClass(show.score_total)">
+            <span>{{{{ show.score_total !== null ? show.score_total : '·' }}}}</span>
+          </div>
+
+          <!-- Chevron Expand Arrow -->
+          <div class="row-chevron">
+            <span class="chevron-arrow" :class="{{open: expandedId === show.id}}">▾</span>
           </div>
         </div>
 
-        <div class="drawer" v-if="expandedId === show.id">
-          <div class="drawer-genres" v-if="show.genres && show.genres.length">
-            <span class="genre-tag" v-for="g in show.genres.slice(0,4)" :key="g">{{{{ g }}}}</span>
-          </div>
-          <div class="drawer-match" v-if="show.matched_artist && show.matched_artist !== show.headliner">
-            matched via {{{{ show.matched_artist }}}}
-          </div>
-          <div class="drawer-footer">
-            <span class="travel-label" v-if="show.travel_minutes">{{{{ show.travel_minutes }}}}m away</span>
-            <span v-else></span>
-            <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" rel="noopener"
-               class="tix-btn" :class="{{tm: show.ticket_provider === 'ticketmaster' || show.ticket_provider === 'ticketweb'}}"
-               @click.stop>
-              Tickets
-              <span class="tix-provider" v-if="show.ticket_provider_label && show.ticket_provider_label !== 'Tickets'">via {{{{ show.ticket_provider_label }}}}</span>
-              &#8599;
-            </a>
+        <!-- Expanded Ticket Drawer -->
+        <div class="drawer" v-if="expandedId === show.id" @click.stop>
+          <div class="ticket-container">
+            <div class="ticket-body">
+              <!-- Ticket Image stub -->
+              <div class="ticket-art-wrap">
+                <img v-if="getShowImage(show)" :src="getShowImage(show)" class="ticket-art" loading="lazy" />
+                <div v-else class="ticket-art-fallback">🎵</div>
+              </div>
+
+              <!-- Supporting acts & doors info -->
+              <div class="ticket-details">
+                <div class="ticket-openers" v-if="show.openers && show.openers.length">
+                  <strong>Supporting Artists</strong>
+                  {{{{ show.openers.join(', ') }}}}
+                </div>
+                <div class="ticket-openers" v-else>
+                  <strong>Supporting Artists</strong>
+                  No openers listed
+                </div>
+
+                <div class="ticket-times-row">
+                  <div class="time-slot">
+                    <span class="label">DOORS</span>
+                    <span class="val">{{{{ show.doors_display || 'TBA' }}}}</span>
+                  </div>
+                  <div class="time-slot">
+                    <span class="label">SHOW</span>
+                    <span class="val">{{{{ show.show_display || 'TBA' }}}}</span>
+                  </div>
+                </div>
+
+                <a v-if="show.spotify_url" :href="show.spotify_url" target="_blank" rel="noopener" class="ticket-spotify-link" @click.stop>
+                  <svg style="width:14px;height:14px;fill:currentColor;vertical-align:middle;margin-right:2px;" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.565.387-.86.207-2.377-1.454-5.37-1.783-8.893-.982-.336.076-.67-.135-.747-.472-.076-.336.136-.67.472-.747 3.856-.88 7.15-.509 9.821 1.13.295.18.387.563.207.864zm1.225-2.72c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.08-1.182-.413.125-.847-.107-.972-.52-.125-.413.108-.847.52-.972 3.668-1.114 8.237-.575 11.35 1.343.366.226.486.706.26 1.073zm.107-2.846C14.538 8.71 8.86 8.52 5.58 9.516c-.523.158-1.08-.143-1.24-.667-.158-.524.143-1.08.667-1.24 3.763-1.14 10.016-.92 13.93 1.403.472.28.623.893.342 1.365-.28.472-.893.622-1.366.342z"/></svg>
+                  Listen on Spotify
+                </a>
+              </div>
+            </div>
+
+            <!-- Perforated separator -->
+            <div class="ticket-divider-line"></div>
+
+            <div class="ticket-action-row">
+              <div class="price-tag">
+                <span class="label">Admission</span>
+                <span class="val">{{{{ show.price || 'Door / TBA' }}}}</span>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <span class="travel-label" v-if="show.travel_minutes">🚗 {{{{ show.travel_minutes }}}}m away</span>
+                <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" rel="noopener"
+                   class="tix-pill ticket-btn-link" :class="{{ 'placeholder-link': show.is_placeholder_link }}"
+                   @click.stop>
+                  <span v-if="show.is_placeholder_link">Venue Info (via TM) &rarr;</span>
+                  <span v-else>Buy Tickets (via {{{{ show.ticket_provider_label }}}}) &rarr;</span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -687,6 +1135,8 @@ createApp({{
     const favoritesOnly = ref(false);
     const favoriteVenues = ref([]);
     const venueSearch = ref('');
+    const searchQuery = ref('');
+    const spotifyPlaylistId = ref('{spotify_id}');
     const now = ref(Date.now() / 1000);
 
     // ── Date helpers ───────────────────────────
@@ -699,7 +1149,7 @@ createApp({{
     const setDate = (v) => {{ dateRange.value = v; }};
     const resetFilters = () => {{
       dateRange.value = 'all'; matchedOnly.value = false;
-      favoritesOnly.value = false;
+      favoritesOnly.value = false; searchQuery.value = '';
     }};
     // Chip toggles filter off if active, opens modal otherwise.
     const favsChipClick = () => {{
@@ -724,19 +1174,31 @@ createApp({{
     const isPast  = (ts) => ts < now.value - 7200;
     const isSoon  = (ts) => ts > now.value && ts < now.value + 7200;
 
+    const getShowImage = (show) => {{
+      return show.spotify_album_image_url || show.spotify_artist_image_url || show.event_image_url || null;
+    }};
+
     // ── Filtered / sorted shows ─────────────────
     const filteredShows = computed(() => {{
       const weekEnd  = inDays(7);
       const monthEnd = inDays(30);
+      const q = searchQuery.value.toLowerCase().trim();
       let r = shows.value.filter(s => {{
         if (dateRange.value === 'tonight' && s.date !== todayStr) return false;
         if (dateRange.value === 'week'    && s.date > weekEnd)    return false;
         if (dateRange.value === 'month'   && s.date > monthEnd)   return false;
         if (matchedOnly.value   && s.score_total === null)                    return false;
         if (favoritesOnly.value && !favoriteVenues.value.includes(s.venue))  return false;
+        
+        if (q) {{
+          const inHeadliner = s.headliner.toLowerCase().includes(q);
+          const inVenue = s.venue.toLowerCase().includes(q);
+          const inOpeners = s.openers && s.openers.some(o => o.toLowerCase().includes(q));
+          const inGenres = s.genres && s.genres.some(g => g.toLowerCase().includes(q));
+          if (!inHeadliner && !inVenue && !inOpeners && !inGenres) return false;
+        }}
         return true;
       }});
-      // Always chronological first; score sort is applied within date groups.
       r = [...r].sort((a, b) => a.timestamp - b.timestamp);
       return r;
     }});
@@ -802,6 +1264,15 @@ createApp({{
       }}
     }};
 
+    // ── Sticky Header Height Calculation ───────
+    const updateHeaderHeight = () => {{
+      const header = document.querySelector('.site-header');
+      if (header) {{
+        const height = header.offsetHeight;
+        document.documentElement.style.setProperty('--header-h', `${{height}}px`);
+      }}
+    }};
+
     // ── Persistence ────────────────────────────
     let timer;
     onMounted(() => {{
@@ -816,8 +1287,14 @@ createApp({{
         if (p.sortMode)      sortMode.value      = p.sortMode;
       }} catch(e) {{}}
       timer = setInterval(() => {{ now.value = Date.now() / 1000; }}, 60000);
+      
+      updateHeaderHeight();
+      window.addEventListener('resize', updateHeaderHeight);
     }});
-    onUnmounted(() => clearInterval(timer));
+    onUnmounted(() => {{
+      clearInterval(timer);
+      window.removeEventListener('resize', updateHeaderHeight);
+    }});
 
     watch(favoriteVenues, (v) => {{
       localStorage.setItem('sc-favs', JSON.stringify(v));
@@ -835,11 +1312,11 @@ createApp({{
     return {{
       shows, expandedId, favsOpen, playlistOpen,
       dateRange, sortMode, matchedOnly, favoritesOnly,
-      favoriteVenues, venueSearch,
+      favoriteVenues, venueSearch, searchQuery, spotifyPlaylistId,
       filteredShows, groupedShows,
       allVenueNames, venueGroups, showCountByVenue,
       setDate, resetFilters, favsChipClick, toggleExpand,
-      scoreClass, fmtTime, isPast, isSoon,
+      scoreClass, fmtTime, isPast, isSoon, getShowImage,
     }};
   }}
 }}).mount('#app');

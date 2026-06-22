@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.sources.custom.date_utils import parse_month_day_text
 from showcat.adapters.sources.custom.time_utils import extract_doors_show_times
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,14 @@ class McMenaminsMainAdapter(BaseSourceAdapter):
                 continue
             seen.add(source_id)
 
+            card_text = card.get_text(" ", strip=True)
+            price_match = re.search(r'\$\d+(?:\.\d{2})?', card_text)
+            price_str = price_match.group(0) if price_match else None
+
+            image_el = card.select_one("img")
+            image_url = image_el.get("src") if image_el else None
+
+            headliner, _, status = normalize_title(headliner)
             events.append(
                 RawEvent(
                     source=self.source_name,
@@ -117,6 +126,9 @@ class McMenaminsMainAdapter(BaseSourceAdapter):
                     show_time=show_time,
                     venue=venue,
                     ticket_url=ticket_url,
+                    price=price_str,
+                    image_url=image_url,
+                    sold_out=(status == "sold_out"),
                 )
             )
 

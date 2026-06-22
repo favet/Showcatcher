@@ -60,7 +60,7 @@
 | Hawthorne Theatre | Hawthorne / Buckman | 750 | Rock, metal, punk | Dedicated | ✓ | **Etix** ✓verified | `KovZpZAkn7IA` **verified** | hawthornetheater.com | ✓ |
 | Aladdin Theater | Sellwood-Moreland | 620 | Americana, folk, world | Dedicated | ✓ | **Etix** ✓verified | `KovZpa3qfe` **verified** | aladdin-theater.com | ✓ |
 | Wonder Ballroom | Alberta Arts District | 650 | Indie, rock, folk | Dedicated | ✓ | **Etix** ✓verified | `KovZpa9hBe` **verified** | wonderballroom.com | ✓ |
-| Bossanova Ballroom | Central Eastside | ~700 | Dance, electronic, events | Dedicated | ✓ | Tixr / Ticket Fairy | N/A | novapdx.com | ○ |
+| Nova PDX (formerly Bossanova Ballroom) | Central Eastside | ~700 | Dance, electronic, events | Dedicated | ✓ | **Tixr** ✓verified | `KovZpZAaIIFA` **verified** | novapdxevents.com/event-calendar | ✓ |
 | Polaris Hall | Central Eastside | ~500 | Electronic, dance, DJ | Dedicated | ✓ | **Etix** ✓verified | `Z7r9jZadc-` **verified** | polarishallpdx.com | ✓ |
 | Star Theater | Old Town | ~350 | Rock, alternative, punk | Dedicated | ✓ | Ticketmaster | `KovZpZAIvlnA` **verified** | startheaterportland.com | ○ |
 | Lola's Room | Downtown | ~400 | Pop, dance, indie | Dedicated | ✓ | **Etix** ✓verified | `KovZpZA1vlJA` **verified** | mcmenamins.com/crystal-ballroom/lolas-room | ✓ |
@@ -128,7 +128,7 @@ Alberta Street Pub (JSON-LD), Artichoke Music (JSON-LD), Kelly's Olympian (WordP
 → Action: Build and deploy `JsonLdAdapter` (which handles generic JSON-LD and WordPress event JSON data).
 
 - Bunk Bar: ✗ Closed permanently in 2019.
-- Bossanova Ballroom (Nova PDX): Tixr ticketing (0 TM events, direct curl block/timeout). Skip for now.
+- Nova PDX (formerly Bossanova Ballroom): ✓ (DOM JSON-LD scraper implemented and tested)
 - Lincoln Hall (PSU): AudienceView ticketing (0 TM events). Skip for now.
 - The Goodfoot Pub & Lounge: Blocks automated requests (HTTP 403). Skip.
 - Mississippi Pizza / The Midnight PDX: Probed but lack structured JSON-LD events. Skip.

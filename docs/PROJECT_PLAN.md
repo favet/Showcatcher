@@ -227,6 +227,38 @@ A unit of work is done only when **all** of these are true:
 
 ---
 
+## Phase 9 — Venue Scraper Expansion
+
+**Goal:** Flesh out every Portland venue that was outputting 0 events by adding direct scrapers, so they appear in the site with event-specific ticket links. Track each venue's completion status here; sessions may hand off mid-phase.
+
+### Venues — buildable scrapers
+
+| Venue | Platform | Status | Notes |
+|---|---|---|---|
+| Alberta Rose Theatre | RHP (list view) | ✅ DONE 2026-06-21 | `AlbertaRoseAdapter` in `rhp.py`, 26 tests pass |
+| Holocene | RHP (grid/`rhpSingleEvent` view) | ✅ DONE 2026-06-21 | `HoloceneAdapter` in `rhp.py`, 26 tests pass |
+| The Get Down | Webflow + JSON-LD + Tixr | ✅ DONE 2026-06-21 | `GetDownAdapter` in `getdown.py`, 26 tests pass |
+| The Showdown | TicketWeb WordPress plugin | ✅ DONE 2026-06-21 | `ShowdownAdapter` in `showdown.py`, 26 tests pass |
+
+### Venues — deferred (JS-rendered, cannot scrape with BeautifulSoup)
+
+| Venue | Platform | Blocker |
+|---|---|---|
+| Alberta Abbey | Squarespace JS calendar | Full page is a JS bundle; no server-rendered event HTML |
+| The Coffin Club | VenuePilot hash SPA | `window.venuepilotSettings = { accountIds: [3434], routing: 'hash' }` — all events loaded client-side |
+| TOC Portland | AFTON ticketing | AFTON renders via JS; static HTML has no event data |
+| Twilight Cafe | HoldMyTicket | HoldMyTicket iframe; no server-rendered calendar |
+| 45 East | Tixr | Verified few events; low priority |
+
+To unblock the JS-rendered venues in a future session: use a headless browser (Playwright/Selenium), or find a JSON API endpoint (check XHR requests in DevTools), or add a Puppeteer-based fetch step in the pipeline.
+
+### Exit Gate 9 (provable)
+- [x] All buildable scrapers yield ≥1 event from their committed fixture. *(Proven by `tests/test_venue_adapters.py`, 26 tests, 2026-06-21)*
+- [ ] Pipeline repopulated and new venues appear in `public/index.html`. *(Pending next pipeline run)*
+- [ ] Deployed to `C:\website\showcat` and visible at showcat.favet.net. *(Pending deploy)*
+
+---
+
 ## Phase dependency summary
 
 ```

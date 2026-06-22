@@ -1,4 +1,4 @@
-"""Venue-direct scraper tests (Phase 8.3 + Phase 8 follow-on).
+"""Venue-direct scraper tests (Phase 8.3 + Phase 9 venue expansion).
 
 Each venue adapter parses its committed fixture into RawEvents whose ticket_url
 points at the venue's real (non-Ticketmaster) ticketer. Runs offline.
@@ -15,12 +15,17 @@ from showcat.adapters.sources.custom.mcmenamins_main import (
     LolasRoomAdapter,
     WhiteEagleAdapter,
 )
+from showcat.adapters.sources.custom.getdown import GetDownAdapter
 from showcat.adapters.sources.custom.revhall import RevolutionHallAdapter
 from showcat.adapters.sources.custom.rhp import (
+    AlbertaRoseAdapter,
     HawthorneAdapter,
+    HoloceneAdapter,
     RoselandAdapter,
     WonderBallroomAdapter,
 )
+from showcat.adapters.sources.custom.showdown import ShowdownAdapter
+from showcat.adapters.sources.custom.novapdx import NovaPdxAdapter
 from showcat.adapters.sources.custom.truewest import TrueWestAdapter
 from showcat.adapters.tickets.providers import classify_provider
 
@@ -172,3 +177,107 @@ class TestEdgefieldAdapter:
         _assert_all_etix(events)
         assert all(e.venue == "Edgefield Amphitheater" for e in events)
         assert all(e.event_date is not None for e in events)
+
+
+# Phase 9 — venue expansion
+
+
+class TestAlbertaRoseAdapter:
+    def test_parses_etix_events(self) -> None:
+        events = _parse_fixture(AlbertaRoseAdapter(), "alberta_rose.html")
+        _assert_all_etix(events)
+        assert all(e.venue == "Alberta Rose Theatre" for e in events)
+        assert all(e.source == "alberta_rose" for e in events)
+        assert all(e.event_date is not None for e in events)
+
+    def test_source_ids_unique(self) -> None:
+        events = _parse_fixture(AlbertaRoseAdapter(), "alberta_rose.html")
+        ids = [e.source_id for e in events]
+        assert len(ids) == len(set(ids))
+
+
+class TestHoloceneAdapter:
+    def test_parses_etix_events(self) -> None:
+        events = _parse_fixture(HoloceneAdapter(), "holocene.html")
+        _assert_all_etix(events)
+        assert all(e.venue == "Holocene" for e in events)
+        assert all(e.source == "holocene" for e in events)
+        assert all(e.event_date is not None for e in events)
+
+    def test_source_ids_unique(self) -> None:
+        events = _parse_fixture(HoloceneAdapter(), "holocene.html")
+        ids = [e.source_id for e in events]
+        assert len(ids) == len(set(ids))
+
+
+class TestGetDownAdapter:
+    def test_parses_tixr_events(self) -> None:
+        events = _parse_fixture(GetDownAdapter(), "getdown.html")
+        assert events, "fixture should yield events"
+        for e in events:
+            assert classify_provider(e.ticket_url) == "tixr", (
+                f"{e.headliner!r} link is not Tixr: {e.ticket_url}"
+            )
+        assert all(e.venue == "The Get Down" for e in events)
+        assert all(e.source == "the_get_down" for e in events)
+        assert all(e.event_date is not None for e in events)
+
+    def test_doors_time_parsed(self) -> None:
+        events = _parse_fixture(GetDownAdapter(), "getdown.html")
+        # Fixture events list "DOORS: 8:00 pm" in their text.
+        assert any(e.doors_time is not None for e in events)
+
+    def test_source_ids_unique(self) -> None:
+        events = _parse_fixture(GetDownAdapter(), "getdown.html")
+        ids = [e.source_id for e in events]
+        assert len(ids) == len(set(ids))
+
+
+class TestShowdownAdapter:
+    def test_parses_events_with_times(self) -> None:
+        events = _parse_fixture(ShowdownAdapter(), "showdown.html")
+        assert events, "fixture should yield events"
+        assert all(e.venue == "The Showdown" for e in events)
+        assert all(e.source == "showdown" for e in events)
+        assert all(e.event_date is not None for e in events)
+        # Both doors and show time should be parsed.
+        assert all(e.doors_time is not None for e in events)
+        assert all(e.show_time is not None for e in events)
+
+    def test_source_ids_unique(self) -> None:
+        events = _parse_fixture(ShowdownAdapter(), "showdown.html")
+        ids = [e.source_id for e in events]
+        assert len(ids) == len(set(ids))
+
+    def test_first_event_fields(self) -> None:
+        events = _parse_fixture(ShowdownAdapter(), "showdown.html")
+        e = events[0]
+        assert e.event_date == date(2026, 6, 21)
+        assert e.show_time == dt_time(20, 0)
+        assert e.doors_time == dt_time(19, 0)
+
+
+class TestNovaPdxAdapter:
+    def test_parses_tixr_events(self) -> None:
+        events = _parse_fixture(NovaPdxAdapter(), "novapdx.html")
+        assert events, "fixture should yield events"
+        for e in events:
+            assert classify_provider(e.ticket_url) == "tixr", (
+                f"{e.headliner!r} link is not Tixr: {e.ticket_url}"
+            )
+        assert all(e.venue == "Nova PDX" for e in events)
+        assert all(e.source == "nova_pdx" for e in events)
+        assert all(e.event_date is not None for e in events)
+
+    def test_source_ids_unique(self) -> None:
+        events = _parse_fixture(NovaPdxAdapter(), "novapdx.html")
+        ids = [e.source_id for e in events]
+        assert len(ids) == len(set(ids))
+
+    def test_first_event_fields(self) -> None:
+        events = _parse_fixture(NovaPdxAdapter(), "novapdx.html")
+        e = next(ev for ev in events if ev.headliner == "House Wednesday")
+        assert e.event_date == date(2026, 6, 24)
+        assert e.show_time is None
+        assert e.ticket_url == "https://tixr.com/e/189938"
+        assert e.source_id == "189938"

@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup, Tag
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.sources.custom.date_utils import infer_date, month_to_num
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,24 @@ class McMenaminsVenueAdapter(BaseSourceAdapter):
                     continue
                 seen.add(source_id)
 
+                price_str = None
+                node_text = node.get_text(" ", strip=True)
+                import re
+                price_match = re.search(r'\$\d+(?:\.\d{2})?', node_text)
+                if price_match:
+                    price_str = price_match.group(0)
+                else:
+                    for sib in children[i + 1 : i + 3]:
+                        sib_text = sib.get_text(" ", strip=True)
+                        price_match = re.search(r'\$\d+(?:\.\d{2})?', sib_text)
+                        if price_match:
+                            price_str = price_match.group(0)
+                            break
+
+                image_el = node.select_one("img")
+                image_url = image_el.get("src") if image_el else None
+
+                headliner, _, status = normalize_title(headliner)
                 events.append(
                     RawEvent(
                         source=self.source_name,
@@ -98,6 +117,9 @@ class McMenaminsVenueAdapter(BaseSourceAdapter):
                         event_date=event_date,
                         venue=self.DEFAULT_VENUE,
                         ticket_url=ticket_url,
+                        price=price_str,
+                        image_url=image_url,
+                        sold_out=(status == "sold_out"),
                     )
                 )
 

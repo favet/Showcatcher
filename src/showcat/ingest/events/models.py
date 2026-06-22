@@ -31,6 +31,9 @@ class Event(Base):
     # Ticketing platform the ticket_url points at (etix/dice/ticketmaster/venue/…).
     # Drives the de-Ticketmaster link preference and the UI provider badge.
     ticket_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    price: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sold_out: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
     first_seen: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

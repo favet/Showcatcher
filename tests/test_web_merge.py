@@ -66,3 +66,37 @@ class TestMergePreference:
         etix = _show(ticket_url="https://www.etix.com/ticket/p/1/x")
         merged = merge_shows_by_identity([etix])
         assert merged[0]["ticket_provider_label"] == "Etix"
+
+    def test_custom_price_precedence_over_ticketmaster(self) -> None:
+        tm = _show(
+            ticket_url="https://www.ticketmaster.com/event/abc",
+            source="ticketmaster",
+            price="$30.00 - $50.00",
+        )
+        venue = _show(
+            ticket_url="https://www.etix.com/ticket/p/1/x",
+            source="aladdin_theater",
+            price="$25.00",
+        )
+        merged = merge_shows_by_identity([tm, venue])
+        assert len(merged) == 1
+        assert merged[0]["price"] == "$25.00"
+
+    def test_placeholder_link_detected(self) -> None:
+        tm_no_price = _show(
+            ticket_url="https://www.ticketmaster.com/event/abc",
+            source="ticketmaster",
+            price=None,
+        )
+        merged = merge_shows_by_identity([tm_no_price])
+        assert len(merged) == 1
+        assert merged[0]["is_placeholder_link"] is True
+
+        tm_with_price = _show(
+            ticket_url="https://www.ticketmaster.com/event/abc",
+            source="ticketmaster",
+            price="$25.00",
+        )
+        merged2 = merge_shows_by_identity([tm_with_price])
+        assert len(merged2) == 1
+        assert merged2[0]["is_placeholder_link"] is False

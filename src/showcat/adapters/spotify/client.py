@@ -1,4 +1,4 @@
-﻿"""Spotify Web API client — the narrow surviving surface we depend on.
+"""Spotify Web API client — the narrow surviving surface we depend on.
 
 Only three operations are used: `/search` (resolve a track name to a URI),
 create a playlist, and replace a playlist's items. Track *selection* stays on
@@ -146,3 +146,29 @@ class SpotifyClient:
         /playlists/{id}/tracks endpoint is gone).
         """
         self._put(f"/playlists/{playlist_id}/items", {"uris": uris})
+
+    def search_artist(self, artist_name: str) -> dict[str, Any] | None:
+        """Search for an artist by name. Returns the first matching artist object or None."""
+        try:
+            data = self._get(
+                "/search",
+                {"q": f"artist:\"{artist_name}\"", "type": "artist", "limit": 1},
+            )
+            items = data.get("artists", {}).get("items", [])
+            if items:
+                return items[0]
+        except Exception as e:
+            logger.warning(f"Failed to search Spotify artist '{artist_name}': {e}")
+        return None
+
+    def get_artist_top_tracks(self, artist_id: str, market: str = "US") -> list[dict[str, Any]]:
+        """Get top tracks for an artist. Returns list of track objects."""
+        try:
+            data = self._get(
+                f"/artists/{artist_id}/top-tracks",
+                {"market": market},
+            )
+            return data.get("tracks", [])
+        except Exception as e:
+            logger.warning(f"Failed to get Spotify top tracks for artist ID '{artist_id}': {e}")
+        return []
