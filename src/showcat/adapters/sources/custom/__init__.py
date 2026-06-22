@@ -1,5 +1,7 @@
 from showcat.adapters.sources.custom.aladdin import AladdinAdapter
+from showcat.adapters.sources.custom.albertastreetpub import AlbertaStreetPubAdapter
 from showcat.adapters.sources.custom.bluediamond import BlueDiamondAdapter
+from showcat.adapters.sources.custom.kellys_olympian import KellysOlympianAdapter
 from showcat.adapters.sources.custom.kentonclub import KentonClubAdapter
 from showcat.adapters.sources.custom.laurelthirst import LaurelThirstAdapter
 from showcat.adapters.sources.custom.mcmenamins import CrystalBallroomAdapter
@@ -51,4 +53,6 @@ ALL_CUSTOM_ADAPTERS = [
     StardayTavernAdapter,
     KentonClubAdapter,
     SpareRoomAdapter,
+    KellysOlympianAdapter,
+    AlbertaStreetPubAdapter,
 ]

@@ -80,7 +80,9 @@ class StardayTavernAdapter(BaseSourceAdapter):
                 # Filter out past events early? We can just pass them, snapshot stage handles it
                 
                 source_id = str(item.get("id", ""))
-                event_url = item.get("url", url)
+                raw_url = item.get("url", "")
+                # Elementor calendar embeds Google Calendar event URLs — not useful as ticket links
+                event_url = url if (not raw_url or "google.com/calendar" in raw_url) else raw_url
                 
                 price = item.get("price") or item.get("cost")
                 if not price and item.get("description"):
@@ -110,7 +112,7 @@ class StardayTavernAdapter(BaseSourceAdapter):
                         show_time=start_time_val,
                         venue="Starday Tavern",
                         ticket_url=event_url,
-                        price=str(price) if price else None,
+                        price=str(price) if price else "At the door",
                         image_url=image_url,
                         sold_out=(status == "sold_out"),
                     )

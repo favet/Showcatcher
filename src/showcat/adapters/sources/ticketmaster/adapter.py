@@ -173,6 +173,14 @@ class TicketmasterAdapter(BaseSourceAdapter):
                 sorted_images = sorted(images, key=lambda img: img.get("width") or 0, reverse=True)
                 image_url = sorted_images[0].get("url")
 
+            # Description: TM exposes free-text "info" (the show blurb) and
+            # "pleaseNote" (logistics). Prefer info; fall back to pleaseNote.
+            description = None
+            raw_desc = raw.get("info") or raw.get("pleaseNote")
+            if raw_desc:
+                cleaned = decode_html(raw_desc).strip()
+                description = cleaned or None
+
             return RawEvent(
                 source=self.source_name,
                 source_id=event_id,
@@ -185,6 +193,7 @@ class TicketmasterAdapter(BaseSourceAdapter):
                 ticket_url=ticket_url,
                 price=price_str,
                 image_url=image_url,
+                description=description,
             )
         except Exception as exc:
             logger.warning(

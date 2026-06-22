@@ -8,6 +8,8 @@ from datetime import time as dt_time
 from pathlib import Path
 
 from showcat.adapters.sources.custom.aladdin import AladdinAdapter
+from showcat.adapters.sources.custom.albertastreetpub import AlbertaStreetPubAdapter
+from showcat.adapters.sources.custom.kellys_olympian import KellysOlympianAdapter
 from showcat.adapters.sources.custom.mcmenamins import CrystalBallroomAdapter
 from showcat.adapters.sources.custom.mcmenamins_main import (
     AlsDenAdapter,
@@ -281,3 +283,79 @@ class TestNovaPdxAdapter:
         assert e.show_time is None
         assert e.ticket_url == "https://tixr.com/e/189938"
         assert e.source_id == "189938"
+
+
+# Small / door venues — added alongside Phase 9
+
+
+class TestAlbertaStreetPubAdapter:
+    def _events(self) -> list:
+        html = (FIXTURES / "albertastreetpub.html").read_text(encoding="utf-8")
+        return AlbertaStreetPubAdapter().parse(html)
+
+    def test_parses_multiple_events(self) -> None:
+        events = self._events()
+        assert len(events) >= 2
+
+    def test_event_fields_populated(self) -> None:
+        events = self._events()
+        e = next(ev for ev in events if "Blue Healer" in ev.headliner)
+        assert e.event_date == date(2026, 7, 15)
+        assert e.show_time == dt_time(19, 0)  # first time found in block ("Doors 7 PM")
+        assert e.venue == "Alberta Street Pub"
+        assert e.source == "alberta_street_pub"
+        assert e.price == "$10"
+        assert "albertastreetpub.com" in (e.ticket_url or "")
+
+    def test_free_show_price_parsed(self) -> None:
+        events = self._events()
+        e = next(ev for ev in events if "Sweet Spirit" in ev.headliner)
+        assert e.price == "Free"
+
+    def test_source_ids_unique(self) -> None:
+        events = self._events()
+        ids = [e.source_id for e in events]
+        assert len(ids) == len(set(ids))
+
+    def test_source_ids_are_slugs(self) -> None:
+        events = self._events()
+        for e in events:
+            assert "/" not in e.source_id
+            assert e.source_id
+
+
+class TestKellysOlympianAdapter:
+    def _events(self) -> list:
+        content = (FIXTURES / "kellys_olympian.json").read_text(encoding="utf-8")
+        return KellysOlympianAdapter().parse(content)
+
+    def test_parses_multiple_events(self) -> None:
+        events = self._events()
+        assert len(events) >= 2
+
+    def test_event_fields_populated(self) -> None:
+        events = self._events()
+        e = next(ev for ev in events if ev.headliner == "The Lemon Twigs")
+        assert e.event_date == date(2026, 7, 18)
+        assert e.show_time == dt_time(20, 0)
+        assert e.venue == "Kelly's Olympian"
+        assert e.source == "kellys_olympian"
+        assert e.price == "$12"
+        assert e.source_id == "10001"
+        assert "kellysolympian.com" in (e.ticket_url or "")
+        assert e.image_url is not None
+
+    def test_null_image_handled(self) -> None:
+        events = self._events()
+        e = next(ev for ev in events if ev.headliner == "Wye Oak")
+        assert e.image_url is None
+
+    def test_empty_cost_handled(self) -> None:
+        events = self._events()
+        e = next(ev for ev in events if ev.headliner == "Partner")
+        assert e.price is None
+
+    def test_source_ids_unique(self) -> None:
+        events = self._events()
+        ids = [e.source_id for e in events]
+        assert len(ids) == len(set(ids))

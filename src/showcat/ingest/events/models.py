@@ -34,6 +34,9 @@ class Event(Base):
     price: Mapped[str | None] = mapped_column(String(100), nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     sold_out: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
+    # Direct Spotify artist URL via search (no Last.fm match required). "none" = searched, not found.
+    event_spotify_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     first_seen: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

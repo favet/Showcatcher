@@ -116,9 +116,23 @@ def _adjusted_match_threshold(event_name: str, taste_name: str, base: float) -> 
     if shorter and shorter.issubset(longer) and shorter != longer:
         return max(base, 0.92)
 
+    ev_distinct = _distinctive_tokens(event_name)
+    ta_distinct = _distinctive_tokens(taste_name)
+    shared = set(ev_distinct) & set(ta_distinct)
+
+    # Guard 3 — no shared distinctive token, and at least one side is
+    # multi-word: the char similarity is coincidental (e.g. "Like Mang" /
+    # "louke man", "Heather Christie" / "The Charities"). Real multi-word
+    # fuzzy matches share at least one exact distinctive token ("Mount Joy" /
+    # "Mt. Joy" share "joy"). Require an unreachable threshold so these route
+    # to review. The both-single-token case is left to Guard 1, which permits
+    # a high-confidence single-word fuzzy match (e.g. a typo'd band name).
+    if not shared and (len(ev_distinct) >= 2 or len(ta_distinct) >= 2):
+        return max(base, 1.01)  # confidence is <= 1.0 → forces "review"
+
     # Guard 1 — single distinctive token: "The Strike" / "The Strokes" share
     # a prefix that yields high char similarity but are unrelated bands.
-    if len(_distinctive_tokens(event_name)) == 1 and len(_distinctive_tokens(taste_name)) == 1:
+    if len(ev_distinct) == 1 and len(ta_distinct) == 1:
         return max(base, 0.90)
 
     return base

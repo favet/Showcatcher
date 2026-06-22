@@ -22,6 +22,7 @@ from showcat.core.base import BaseStage
 from showcat.core.database import RunLedger
 from showcat.core.progress import PipelineProgress
 from showcat.ingest.events.snapshot import EventSnapshotStage
+from showcat.ingest.events.spotify_search import EventSpotifySearchStage
 from showcat.ingest.history.backfill import HistoryBackfillStage
 from showcat.ingest.history.mbid_resolve import MbidResolveStage
 from showcat.ingest.history.tag_ingest import ArtistTagStage
@@ -148,13 +149,29 @@ def run_pipeline(
         progress.fail_stage(stage_prog, str(e))
         raise
 
-    # --- Stage 7: Generate Web Output ---
-    print(f"[{n + 5}/{total + 1}] Generating web output...")
+    # --- Stage 7 (optional): Spotify artist URL enrichment ---
+    import os
+    if os.environ.get("SPOTIFY_REFRESH_TOKEN"):
+        print(f"[{n + 5}/{total + 1}] Searching Spotify URLs for unmatched events...")
+        stage_prog = progress.start_stage("Spotify Event URL Search")
+        try:
+            count = _run_stage(EventSpotifySearchStage())
+            steps.append(("spotify event urls", count))
+            progress.complete_stage(stage_prog, count)
+        except Exception as e:
+            # Non-fatal: missing token or rate-limit shouldn't abort the pipeline.
+            print(f"  [warn] Spotify event URL search failed: {e}")
+            progress.fail_stage(stage_prog, str(e))
+    else:
+        print(f"  [skip] Spotify event URL search (SPOTIFY_REFRESH_TOKEN not set)")
+
+    # --- Stage 8: Generate Web Output ---
+    print(f"[{n + 6}/{total + 2}] Generating web output...")
     stage_prog = progress.start_stage("Web Output Generation")
     try:
         from showcat.core.database import get_db_session
         from showcat.outputs.web.adapter import WebOutputAdapter
-        
+
         adapter = WebOutputAdapter()
         with get_db_session() as session:
             out_path = adapter.write(session)

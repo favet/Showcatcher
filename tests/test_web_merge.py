@@ -92,6 +92,7 @@ class TestMergePreference:
         assert len(merged) == 1
         assert merged[0]["is_placeholder_link"] is True
 
+        # TM with a price is still a TM-family redirect (aggregator) → placeholder.
         tm_with_price = _show(
             ticket_url="https://www.ticketmaster.com/event/abc",
             source="ticketmaster",
@@ -99,4 +100,4 @@ class TestMergePreference:
         )
         merged2 = merge_shows_by_identity([tm_with_price])
         assert len(merged2) == 1
-        assert merged2[0]["is_placeholder_link"] is False
+        assert merged2[0]["is_placeholder_link"] is True

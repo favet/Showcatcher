@@ -31,6 +31,7 @@ class RawEvent:
     price: str | None = None
     image_url: str | None = None
     sold_out: bool = False
+    description: str | None = None
 
 
 class BaseSourceAdapter(abc.ABC):

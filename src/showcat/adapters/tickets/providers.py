@@ -13,6 +13,15 @@ Pure and offline — unit-tested without network or DB.
 """
 from urllib.parse import urlparse
 
+# Domains that look like venue URLs but are actually useless as ticket links
+# (calendar embeds, social profiles, etc.). Treated as "none" so they never
+# beat a real ticket link in best_link().
+_BLOCKED_HOSTS = {
+    "google.com", "calendar.google.com",
+    "facebook.com", "instagram.com", "twitter.com", "x.com",
+    "youtube.com",
+}
+
 # Domain fragments → provider key. Checked as substrings of the host.
 # NOTE: Ticketmaster owns several brands (Live Nation, TicketWeb, Front Gate,
 # Universe). Per D17 / owner directive, ALL Ticketmaster-family properties are
@@ -105,6 +114,10 @@ def classify_provider(url: str | None) -> str:
     host = (urlparse(url).hostname or "").lower()
     if not host:
         return "none"
+    # Block social/calendar domains — useless as ticket links
+    for blocked in _BLOCKED_HOSTS:
+        if host == blocked or host.endswith("." + blocked):
+            return "none"
     for fragment, provider in _DOMAIN_PROVIDERS:
         if fragment in host:
             return provider

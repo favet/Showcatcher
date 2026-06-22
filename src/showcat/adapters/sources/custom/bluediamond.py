@@ -66,7 +66,12 @@ class BlueDiamondAdapter(BaseSourceAdapter):
 
                 url = item.get("url", "")
                 
+                import re as _re, html as _html
                 cost = item.get("cost") or item.get("price")
+                if not cost:
+                    desc_text = _re.sub(r'<[^>]+>', ' ', item.get("description", ""))
+                    _m = _re.search(r'\$\d+(?:\.\d{2})?', desc_text)
+                    cost = _m.group(0) if _m else None
                 image_info = item.get("image")
                 image_url = None
                 if isinstance(image_info, dict):

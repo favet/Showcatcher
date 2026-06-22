@@ -89,10 +89,10 @@ class NoFunBarAdapter(BaseSourceAdapter):
                 image_el = event_item.select_one('.eventlist-thumbnail img, img')
                 image_url = image_el.get('data-src') or image_el.get('src') if image_el else None
 
-                # Price
+                # Price from listing text; "At the door" when none posted (bar venue)
                 import re
                 price_match = re.search(r'\$\d+(?:\.\d{2})?', event_text)
-                price_str = price_match.group(0) if price_match else None
+                price_str = price_match.group(0) if price_match else "At the door"
 
                 events.append(
                     RawEvent(

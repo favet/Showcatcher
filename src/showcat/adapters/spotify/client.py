@@ -148,18 +148,19 @@ class SpotifyClient:
         self._put(f"/playlists/{playlist_id}/items", {"uris": uris})
 
     def search_artist(self, artist_name: str) -> dict[str, Any] | None:
-        """Search for an artist by name. Returns the first matching artist object or None."""
-        try:
-            data = self._get(
-                "/search",
-                {"q": f"artist:\"{artist_name}\"", "type": "artist", "limit": 1},
-            )
-            items = data.get("artists", {}).get("items", [])
-            if items:
-                return items[0]
-        except Exception as e:
-            logger.warning(f"Failed to search Spotify artist '{artist_name}': {e}")
-        return None
+        """Search for an artist by name. Returns the first matching artist object or None.
+
+        Uses plain-text search (not artist: field filter) for better recall on
+        smaller/indie artists. Raises SpotifyError on API failures — callers must
+        handle rate-limits themselves so transient failures aren't stored as
+        permanent 'not found'.
+        """
+        data = self._get(
+            "/search",
+            {"q": artist_name, "type": "artist", "limit": 1},
+        )
+        items = data.get("artists", {}).get("items", [])
+        return items[0] if items else None
 
     def get_artist_top_tracks(self, artist_id: str, market: str = "US") -> list[dict[str, Any]]:
         """Get top tracks for an artist. Returns list of track objects."""

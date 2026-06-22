@@ -44,6 +44,7 @@ def _raw_event_to_dict(event: RawEvent) -> dict[str, Any]:
         "ticket_url": event.ticket_url,
         "price": event.price,
         "image_url": event.image_url,
+        "description": event.description,
     }
 
 
@@ -128,6 +129,7 @@ class EventSnapshotStage(BaseStage):
                     price=raw_event.price,
                     image_url=raw_event.image_url,
                     sold_out=raw_event.sold_out,
+                    description=raw_event.description,
                     first_seen=now,
                     last_seen=now,
                 )
@@ -141,10 +143,11 @@ class EventSnapshotStage(BaseStage):
                         "show_time": raw_event.show_time,
                         "ticket_url": raw_event.ticket_url,
                         "ticket_provider": ticket_provider,
-                        # Only overwrite price/image if the new scrape has them
+                        # Only overwrite price/image/description if the new scrape has them
                         # (prevents erasure when the source stops returning them).
                         **(({"price": raw_event.price}) if raw_event.price else {}),
                         **(({"image_url": raw_event.image_url}) if raw_event.image_url else {}),
+                        **(({"description": raw_event.description}) if raw_event.description else {}),
                         "sold_out": raw_event.sold_out,
                     },
                 )

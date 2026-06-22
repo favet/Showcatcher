@@ -3,7 +3,6 @@ import datetime as dt
 import json
 import logging
 import os
-import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from showcat.adapters.sources.title_parser import is_non_show
-from showcat.adapters.tickets.providers import best_link, classify_provider, provider_label
+from showcat.adapters.tickets.providers import _TM_FAMILY, best_link, classify_provider, provider_label
+from showcat.core.travel import get_travel_times, lookup_travel, normalize_venue_name
 from showcat.ingest.events.models import Event
 from showcat.ingest.history.models import Artist, ArtistTag
 from showcat.outputs.base import BaseOutputAdapter
@@ -21,8 +21,10 @@ from showcat.score.models import EventScore
 
 logger = logging.getLogger(__name__)
 
-SQLITE_DB_PATH = os.environ.get("SQLITE_DB_PATH", r"C:\Users\Justin\Documents\PDX Shows\data\pdx.sqlite")
-HOME_CELL_ID = "8828f0003dfffff"
+# Catcat mascot — favicon + default show-image fallback. Shipped as a package
+# asset (base64 of Media/catcat.png) so it deploys with the web output.
+_CATCAT_B64 = (Path(__file__).parent / "catcat_b64.txt").read_text(encoding="utf-8").strip()
+CATCAT_DATA_URI = f"data:image/png;base64,{_CATCAT_B64}"
 
 # TM returns slightly different venue name strings; normalize before any logic.
 VENUE_CANONICAL: dict[str, str] = {
@@ -83,14 +85,6 @@ def get_venue_size(name: str) -> str:
     return "mid"
 
 
-def normalize_venue_name(name: str) -> str:
-    name = name.lower()
-    for word in ["music venue", "theater", "theatre", "- portland",
-                 "mcmenamins historic", "manor", "and hotel"]:
-        name = name.replace(word, "")
-    return name.strip()
-
-
 def canonical_show_key(venue: str, date_iso: str, headliner: str) -> tuple[str, str, str]:
     return (
         normalize(normalize_venue_name(canonicalize_venue(venue))),
@@ -132,12 +126,9 @@ def merge_shows_by_identity(raw_shows: list[dict[str, Any]]) -> list[dict[str, A
                     break
         rep["price"] = price
 
-        # Ticketmaster placeholder detection
-        is_placeholder_link = False
-        if provider in ("ticketmaster", "ticketweb"):
-            if not price:
-                is_placeholder_link = True
-        rep["is_placeholder_link"] = is_placeholder_link
+        # All TM-family links are placeholders: they go to an aggregator page,
+        # not direct purchase. Style them muted so venue-direct (Etix) wins visually.
+        rep["is_placeholder_link"] = provider in _TM_FAMILY
 
         # Merge event image
         event_image_url = None
@@ -155,32 +146,18 @@ def merge_shows_by_identity(raw_shows: list[dict[str, Any]]) -> list[dict[str, A
                 break
         rep["openers"] = openers
 
+        # Merge event_spotify_url (prefer any member that has one)
+        event_spotify_url = None
+        for m in members:
+            if m.get("event_spotify_url"):
+                event_spotify_url = m["event_spotify_url"]
+                break
+        rep["event_spotify_url"] = event_spotify_url
+
         merged.append(rep)
     return merged
 
 
-def get_travel_times() -> dict[str, dict[str, Any]]:
-    times: dict[str, dict[str, Any]] = {}
-    if not os.path.exists(SQLITE_DB_PATH):
-        return times
-    try:
-        conn = sqlite3.connect(SQLITE_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        venues = conn.execute("SELECT venue_id, name FROM venues").fetchall()
-        for v in venues:
-            bm = conn.execute(
-                "SELECT base_seconds, base_meters FROM base_matrix WHERE cell_id = ? AND venue_id = ?",
-                (HOME_CELL_ID, v["venue_id"]),
-            ).fetchone()
-            if bm:
-                times[normalize_venue_name(v["name"])] = {
-                    "minutes": round(bm["base_seconds"] / 60),
-                    "miles": round(bm["base_meters"] / 1609.34, 1),
-                }
-        conn.close()
-    except Exception as e:
-        logger.error("Error querying SQLite: %s", e)
-    return times
 
 
 def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> list[dict[str, Any]]:
@@ -210,7 +187,7 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
             tags_by_artist.setdefault(t.artist_id, []).append((t.tag, t.weight))  # type: ignore[arg-type]
         for aid in tags_by_artist:
             tags_by_artist[aid] = [
-                tag for tag, _ in sorted(tags_by_artist[aid], key=lambda x: x[1], reverse=True)[:3]  # type: ignore[index]
+                tag for tag, _ in sorted(tags_by_artist[aid], key=lambda x: x[1], reverse=True)[:6]  # type: ignore[index]
             ]
 
     def fmt_time(t: dt.time) -> str:
@@ -233,12 +210,7 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
 
         venue = canonicalize_venue(event.venue)
 
-        norm_v = normalize_venue_name(venue)
-        travel_info = None
-        for k, v in travel_times.items():
-            if norm_v == k or norm_v in k or k in norm_v:
-                travel_info = v
-                break
+        travel_info = lookup_travel(venue, travel_times)
 
         genres = tags_by_artist.get(artist.id, []) if artist else []
 
@@ -289,16 +261,23 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
             "ticket_url": event.ticket_url,
             "ticket_provider": ticket_provider,
             "ticket_provider_label": provider_label(ticket_provider),
+            "is_placeholder_link": False,
             "price": event.price,
             "event_image_url": event.image_url,
             "spotify_artist_image_url": artist.image_url if artist else None,
             "spotify_album_image_url": artist.album_image_url if artist else None,
             "spotify_url": artist.spotify_url if artist else None,
+            "event_spotify_url": (
+                event.event_spotify_url
+                if event.event_spotify_url and event.event_spotify_url != "none"
+                else None
+            ),
             "album_name": artist.album_name if artist else None,
             "score_total": score_int,
             "matched_artist": artist.raw_name if artist else None,
             "travel_minutes": travel_info["minutes"] if travel_info else None,
             "genres": genres,
+            "description": event.description,
             "source": event.source,
             "timestamp": timestamp,
         })
@@ -321,6 +300,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
   <meta name="description" content="Every upcoming Portland show, ranked by your taste.">
   <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <link rel="icon" type="image/png" href="{CATCAT_DATA_URI}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -376,7 +356,16 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .brand-right {{ display: flex; align-items: center; gap: 0.5rem; }}
     .brand-meta {{ font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }}
     .brand-meta strong {{ color: var(--text); }}
-    .match-stat {{ color: var(--accent); }}
+    .health-stats {{
+      font-family: var(--mono); font-size: 0.65rem; color: var(--muted);
+      display: flex; align-items: center; gap: 0.3rem; margin-top: 0.15rem;
+    }}
+    .hs-sep {{ opacity: 0.4; }}
+    .hs {{ cursor: default; }}
+    .hs-taste    {{ color: var(--accent); }}
+    .hs-linked   {{ color: #34d399; }}
+    .hs-priced   {{ color: #fbbf24; }}
+    .hs-pictured {{ color: #f472b6; }}
 
     /* Search bar */
     .search-row {{
@@ -482,140 +471,104 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     /* ── Card design ──────────────── */
     .show-card {{
       background: var(--surface);
-      border-radius: 8px;
-      margin-bottom: 0.5rem;
-      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      margin-bottom: 0.4rem;
+      padding: 0.7rem 0.9rem;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: background 0.12s;
       user-select: none; -webkit-user-select: none;
+      border: 1px solid transparent;
     }}
-    .show-card:hover {{
-      background: var(--surface-2);
-    }}
-    .show-card.is-past {{ opacity: 0.35; pointer-events: none; }}
+    .show-card:hover {{ background: var(--surface-2); border-color: var(--border); }}
+    .show-card.is-past {{ opacity: 0.3; pointer-events: none; }}
 
-    .row-main {{
-      display: flex; align-items: center; gap: 0.75rem;
-    }}
+    .row-main {{ display: flex; align-items: center; gap: 0.7rem; }}
 
+    /* Thumbnail — 56px, square with rounded corners */
     .show-thumb-container {{
-      position: relative;
-      width: 2.8rem;
-      height: 2.8rem;
-      border-radius: 8px;
-      overflow: hidden;
-      flex-shrink: 0;
+      position: relative; width: 3.5rem; height: 3.5rem;
+      border-radius: 8px; overflow: hidden; flex-shrink: 0;
     }}
     .show-thumb {{
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 8px;
+      width: 100%; height: 100%; object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
     }}
     .show-thumb-fallback {{
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(135deg, #2a251e 0%, #1a1612 100%);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.1rem;
-      color: var(--muted);
+      width: 100%; height: 100%;
+      background: linear-gradient(135deg, #1e1a2e 0%, #12101c 100%);
+      border: 1px solid rgba(167,139,250,0.1); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
     }}
 
-    .show-info {{ flex: 1; min-width: 0; }}
-    .show-headliner-row {{
-      display: flex; align-items: baseline; justify-content: space-between;
-    }}
+    /* Info column */
+    .show-info {{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }}
+    .show-headliner-row {{ display: flex; align-items: baseline; }}
     .show-headliner {{
-      font-size: 0.975rem; font-weight: 600; line-height: 1.25;
-      color: var(--text);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 1rem; font-weight: 650; line-height: 1.2;
+      color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       text-decoration: none;
     }}
     .show-headliner:hover {{
-      text-decoration: underline;
-      text-decoration-color: rgba(167, 139, 250, 0.5);
+      text-decoration: underline; text-decoration-color: rgba(167,139,250,0.5);
     }}
-    .show-headliner.is-matched {{ color: var(--text); }}
+    .show-headliner.is-matched {{ color: var(--accent); }}
+
     .show-sub {{
-      display: flex; align-items: center; gap: 0.4rem;
-      font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem;
+      display: flex; align-items: center; gap: 0.35rem;
+      font-size: 0.73rem; color: var(--muted);
       overflow: hidden; white-space: nowrap;
     }}
     .show-venue {{ overflow: hidden; text-overflow: ellipsis; min-width: 0; }}
     .show-time {{
-      font-family: var(--mono); font-size: 0.72rem;
-      color: var(--text); opacity: 0.55; flex-shrink: 0;
+      font-family: var(--mono); font-size: 0.7rem;
+      color: var(--text); opacity: 0.5; flex-shrink: 0;
     }}
-    .show-time.soon {{ color: var(--tonight); opacity: 1; font-weight: 600; }}
-    .sub-dot {{ opacity: 0.35; }}
+    .show-time.soon {{ color: var(--tonight); opacity: 1; font-weight: 700; }}
+    .sub-dot {{ opacity: 0.3; flex-shrink: 0; }}
+    .travel-chip {{
+      font-family: var(--mono); font-size: 0.64rem; color: #34d399;
+      opacity: 0.8; flex-shrink: 0;
+    }}
 
+    /* Openers preview in collapsed card */
+    .show-openers-preview {{
+      font-size: 0.68rem; color: #7b6da0; opacity: 0.85;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }}
+
+    /* Genre tags — compact, inline */
     .row-genres {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.25rem;
-      margin-top: 0.35rem;
+      display: flex; flex-wrap: wrap; gap: 0.2rem; margin-top: 0.15rem;
     }}
     .micro-genre {{
-      font-size: 0.62rem;
-      font-weight: 550;
-      padding: 0.08rem 0.35rem;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.02em;
+      font-size: 0.6rem; font-weight: 600; padding: 0.06rem 0.3rem;
+      border-radius: 3px;
+      background: rgba(167,139,250,0.07); border: 1px solid rgba(167,139,250,0.15);
+      color: #a78bfa; text-transform: lowercase; letter-spacing: 0.01em;
     }}
 
+    /* Score badge — only shown when scored; unscored shows just have the chevron */
     .score-badge-circle {{
       display: flex; align-items: center; justify-content: center;
-      width: 2.3rem; height: 2.3rem;
-      border-radius: 50%;
-      font-family: var(--mono); font-size: 0.82rem; font-weight: 700;
-      transition: all 0.2s;
-      flex-shrink: 0;
-      align-self: center;
+      width: 2.1rem; height: 2.1rem; border-radius: 50%;
+      font-family: var(--mono); font-size: 0.78rem; font-weight: 700;
+      flex-shrink: 0; align-self: center;
     }}
-    .score-badge-circle.hi {{
-      border: 2px solid var(--accent);
-      color: var(--accent);
-      background: rgba(167, 139, 250, 0.05);
-    }}
-    .score-badge-circle.md {{
-      border: 2px solid var(--score-mid);
-      color: var(--score-mid);
-    }}
-    .score-badge-circle.lo {{
-      border: 2px solid var(--score-lo);
-      color: var(--muted);
-    }}
-    .score-badge-circle.none {{
-      border: 2px dashed #2a2445;
-      color: #3d3660;
-    }}
+    .score-badge-circle.hi {{ border: 2px solid var(--accent); color: var(--accent); background: rgba(167,139,250,0.06); }}
+    .score-badge-circle.md {{ border: 2px solid var(--score-mid); color: var(--score-mid); }}
+    .score-badge-circle.lo {{ border: 2px solid #2e2a4a; color: #5a5080; }}
+    .score-badge-circle.none {{ display: none; }}
 
     .row-chevron {{
       display: flex; align-items: center; justify-content: center;
-      width: 1.25rem; height: 100%;
-      flex-shrink: 0;
-      margin-left: 0.25rem;
+      width: 1.1rem; flex-shrink: 0;
     }}
     .chevron-arrow {{
-      font-size: 0.9rem;
-      color: var(--muted);
-      opacity: 0.5;
-      transition: transform 0.2s ease, opacity 0.2s ease;
+      font-size: 0.85rem; color: var(--muted); opacity: 0.45;
+      transition: transform 0.18s ease, opacity 0.18s ease;
     }}
-    .chevron-arrow.open {{
-      transform: rotate(180deg);
-      color: var(--accent);
-      opacity: 0.9;
-    }}
+    .chevron-arrow.open {{ transform: rotate(180deg); color: var(--accent); opacity: 0.9; }}
 
     /* ── Expanded drawer & ticket stub ─────────── */
     .drawer {{
@@ -698,6 +651,14 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       letter-spacing: 0.05em;
       display: block;
       margin-bottom: 0.1rem;
+    }}
+
+    .ticket-description {{
+      font-size: 0.78rem;
+      color: #c7bdae;
+      line-height: 1.45;
+      margin-top: 0.25rem;
+      font-style: italic;
     }}
 
     .ticket-times-row {{
@@ -821,9 +782,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       background: rgba(255, 255, 255, 0.07);
       color: var(--text);
     }}
-    .travel-label {{
-      font-family: var(--mono); font-size: 0.7rem; color: var(--muted);
-    }}
+
 
     /* ── Empty state ─────────────────────────── */
     .empty {{
@@ -902,7 +861,18 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       <div class="brand-row">
         <div class="brand"><span class="brand-logo">showcat</span></div>
         <div class="brand-right">
-          <div class="brand-meta"><strong>{{{{ filteredShows.length }}}}</strong> shows &middot; <span class="match-stat">{{{{ matchPct }}}}% matched</span> &middot; {ts}</div>
+          <div class="brand-meta">
+            <strong>{{{{ filteredShows.length }}}}</strong> shows &middot; {ts}
+          </div>
+          <div class="health-stats">
+            <span class="hs hs-taste"    title="Last.fm taste match">{{{{ matchPct }}}}% taste</span>
+            <span class="hs-sep">&middot;</span>
+            <span class="hs hs-linked"   title="Spotify artist linked">{{{{ linkedPct }}}}% linked</span>
+            <span class="hs-sep">&middot;</span>
+            <span class="hs hs-priced"   title="Price available">{{{{ pricedPct }}}}% priced</span>
+            <span class="hs-sep">&middot;</span>
+            <span class="hs hs-pictured" title="Artist picture available">{{{{ picturedPct }}}}% pictured</span>
+          </div>
         </div>
       </div>
 
@@ -956,84 +926,112 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
         <div class="row-main">
           <!-- Thumbnail Image -->
           <div class="show-thumb-container">
-            <img v-if="getShowImage(show)" :src="getShowImage(show)" class="show-thumb" loading="lazy" />
-            <div v-else class="show-thumb-fallback"></div>
+            <img v-if="getShowImage(show)" :src="getShowImage(show)" class="show-thumb" loading="lazy" @error="onImgError($event, show.id)" />
+            <img v-else :src="DEFAULT_SHOW_IMG" class="show-thumb show-thumb-default" loading="lazy" alt="" />
           </div>
 
           <!-- Show Information -->
           <div class="show-info">
             <div class="show-headliner-row">
-              <a class="show-headliner" :class="{{'is-matched': show.matched_artist}}"
+              <a v-if="artistUrl(show)" class="show-headliner" :class="{{'is-matched': show.matched_artist}}"
                  :href="artistUrl(show)" target="_blank" rel="noopener" @click.stop>{{{{ show.headliner }}}}</a>
+              <span v-else class="show-headliner" :class="{{'is-matched': show.matched_artist}}">{{{{ show.headliner }}}}</span>
             </div>
+
+            <!-- Venue · time · distance -->
             <div class="show-sub">
               <span class="show-venue">{{{{ show.venue }}}}</span>
-              <span class="sub-dot" v-if="show.show_display || show.doors_display">&middot;</span>
-              <span class="show-time" :class="{{soon: isSoon(show.timestamp)}}" v-if="show.show_display">
-                {{{{ fmtTime(show.show_display) }}}}
-              </span>
-              <span class="show-time" :class="{{soon: isSoon(show.timestamp)}}" v-else-if="show.doors_display">
-                {{{{ fmtTime(show.doors_display) }}}} <span style="opacity:0.6;font-size:0.65rem">doors</span>
-              </span>
+              <template v-if="show.show_display || show.doors_display">
+                <span class="sub-dot">&middot;</span>
+                <span class="show-time" :class="{{soon: isSoon(show.timestamp)}}" v-if="show.show_display">{{{{ fmtTime(show.show_display) }}}}</span>
+                <span class="show-time" :class="{{soon: isSoon(show.timestamp)}}" v-else-if="show.doors_display">{{{{ fmtTime(show.doors_display) }}}} <span style="opacity:0.55;font-size:0.62rem">doors</span></span>
+              </template>
+              <template v-if="show.travel_minutes">
+                <span class="sub-dot">&middot;</span>
+                <span class="travel-chip">{{{{ show.travel_minutes }}}}m</span>
+              </template>
+              <template v-if="show.price">
+                <span class="sub-dot">&middot;</span>
+                <span style="font-family:var(--mono);font-size:0.68rem;color:#fbbf24;opacity:0.9">{{{{ show.price }}}}</span>
+              </template>
             </div>
-            <!-- Micro Genre Tags Inline -->
+
+            <!-- Openers preview (collapsed) -->
+            <div class="show-openers-preview" v-if="show.openers && show.openers.length">
+              w/ {{{{ show.openers.slice(0,3).join(' · ') }}}}
+            </div>
+
+            <!-- Genre tags -->
             <div class="row-genres" v-if="show.genres && show.genres.length">
-              <span class="micro-genre" v-for="g in show.genres.slice(0, 2)" :key="g">{{{{ g }}}}</span>
+              <span class="micro-genre" v-for="g in show.genres.slice(0, 3)" :key="g">{{{{ g }}}}</span>
             </div>
           </div>
 
-          <!-- Taste Match Circle Badge -->
-          <div class="score-badge-circle" :class="scoreClass(show.score_total)">
-            <span>{{{{ show.score_total !== null ? show.score_total : '·' }}}}</span>
+          <!-- Score badge — hidden when not scored -->
+          <div class="score-badge-circle" :class="scoreClass(show.score_total)" v-if="show.score_total !== null">
+            <span>{{{{ show.score_total }}}}</span>
           </div>
 
-          <!-- Chevron Expand Arrow -->
+          <!-- Chevron -->
           <div class="row-chevron">
             <span class="chevron-arrow" :class="{{open: expandedId === show.id}}">▾</span>
           </div>
         </div>
 
-        <!-- Expanded Ticket Drawer -->
+        <!-- Expanded Drawer -->
         <div class="drawer" v-if="expandedId === show.id" @click.stop>
           <div class="ticket-container">
             <div class="ticket-body">
-              <!-- Ticket Image stub -->
+              <!-- Art -->
               <div class="ticket-art-wrap">
-                <img v-if="getShowImage(show)" :src="getShowImage(show)" class="ticket-art" loading="lazy" />
-                <div v-else class="ticket-art-fallback"></div>
+                <img v-if="getShowImage(show)" :src="getShowImage(show)" class="ticket-art" loading="lazy" @error="onImgError($event, show.id)" />
+                <img v-else :src="DEFAULT_SHOW_IMG" class="ticket-art ticket-art-default" loading="lazy" alt="" />
               </div>
 
-              <!-- Supporting acts & doors info -->
+              <!-- Details column -->
               <div class="ticket-details">
+                <!-- Supporting artists -->
                 <div class="ticket-openers" v-if="show.openers && show.openers.length">
-                  <strong>Supporting Artists</strong>
+                  <strong>Support</strong>
                   {{{{ show.openers.join(', ') }}}}
                 </div>
-                <div class="ticket-openers" v-else>
-                  <strong>Supporting Artists</strong>
-                  No openers listed
-                </div>
 
+                <!-- Times -->
                 <div class="ticket-times-row">
                   <div class="time-slot">
                     <span class="label">DOORS</span>
-                    <span class="val">{{{{ show.doors_display || 'TBA' }}}}</span>
+                    <span class="val">{{{{ show.doors_display || '—' }}}}</span>
                   </div>
                   <div class="time-slot">
                     <span class="label">SHOW</span>
-                    <span class="val">{{{{ show.show_display || 'TBA' }}}}</span>
+                    <span class="val">{{{{ show.show_display || '—' }}}}</span>
+                  </div>
+                  <div class="time-slot" v-if="show.score_total !== null">
+                    <span class="label">SCORE</span>
+                    <span class="val" style="color:var(--accent)">{{{{ show.score_total }}}}</span>
                   </div>
                 </div>
 
-                <a v-if="show.spotify_url" :href="show.spotify_url" target="_blank" rel="noopener" class="ticket-spotify-link" @click.stop>
-                  <svg style="width:14px;height:14px;fill:currentColor;vertical-align:middle;margin-right:2px;" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.565.387-.86.207-2.377-1.454-5.37-1.783-8.893-.982-.336.076-.67-.135-.747-.472-.076-.336.136-.67.472-.747 3.856-.88 7.15-.509 9.821 1.13.295.18.387.563.207.864zm1.225-2.72c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.08-1.182-.413.125-.847-.107-.972-.52-.125-.413.108-.847.52-.972 3.668-1.114 8.237-.575 11.35 1.343.366.226.486.706.26 1.073zm.107-2.846C14.538 8.71 8.86 8.52 5.58 9.516c-.523.158-1.08-.143-1.24-.667-.158-.524.143-1.08.667-1.24 3.763-1.14 10.016-.92 13.93 1.403.472.28.623.893.342 1.365-.28.472-.893.622-1.366.342z"/></svg>
-                  Listen on Spotify
-                </a>
-                <a class="ticket-lastfm-link" :href="lastfmUrl(show)" target="_blank" rel="noopener" @click.stop>Last.fm &rarr;</a>
+                <!-- Genre tags in drawer -->
+                <div class="row-genres" v-if="show.genres && show.genres.length">
+                  <span class="micro-genre" v-for="g in show.genres" :key="g">{{{{ g }}}}</span>
+                </div>
+
+                <!-- Show description -->
+                <div class="ticket-description" v-if="show.description">{{{{ show.description }}}}</div>
+
+                <!-- External links -->
+                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.15rem;">
+                  <a v-if="show.spotify_url || show.event_spotify_url"
+                     :href="show.spotify_url || show.event_spotify_url" target="_blank" rel="noopener" class="ticket-spotify-link" @click.stop>
+                    <svg style="width:13px;height:13px;fill:currentColor;vertical-align:middle;margin-right:2px;" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.565.387-.86.207-2.377-1.454-5.37-1.783-8.893-.982-.336.076-.67-.135-.747-.472-.076-.336.136-.67.472-.747 3.856-.88 7.15-.509 9.821 1.13.295.18.387.563.207.864zm1.225-2.72c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.08-1.182-.413.125-.847-.107-.972-.52-.125-.413.108-.847.52-.972 3.668-1.114 8.237-.575 11.35 1.343.366.226.486.706.26 1.073zm.107-2.846C14.538 8.71 8.86 8.52 5.58 9.516c-.523.158-1.08-.143-1.24-.667-.158-.524.143-1.08.667-1.24 3.763-1.14 10.016-.92 13.93 1.403.472.28.623.893.342 1.365-.28.472-.893.622-1.366.342z"/></svg>
+                    Spotify
+                  </a>
+                  <a v-if="show.matched_artist" class="ticket-lastfm-link" :href="lastfmUrl(show)" target="_blank" rel="noopener" @click.stop>Last.fm &rarr;</a>
+                </div>
               </div>
             </div>
 
-            <!-- Perforated separator -->
             <div class="ticket-divider-line"></div>
 
             <div class="ticket-action-row">
@@ -1041,16 +1039,12 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
                 <span class="label">Admission</span>
                 <span class="val">{{{{ show.price || 'Door / TBA' }}}}</span>
               </div>
-
-              <div style="display:flex;align-items:center;gap:0.75rem;">
-                <span class="travel-label" v-if="show.travel_minutes">{{{{ show.travel_minutes }}}}m away</span>
-                <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" rel="noopener"
-                   class="tix-pill ticket-btn-link" :class="{{ 'placeholder-link': show.is_placeholder_link }}"
-                   @click.stop>
-                  <span v-if="show.is_placeholder_link">Venue Info (via TM) &rarr;</span>
-                  <span v-else>Buy Tickets (via {{{{ show.ticket_provider_label }}}}) &rarr;</span>
-                </a>
-              </div>
+              <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" rel="noopener"
+                 class="tix-pill ticket-btn-link" :class="{{ 'placeholder-link': show.is_placeholder_link }}"
+                 @click.stop>
+                <span v-if="show.is_placeholder_link">View on Ticketmaster &rarr;</span>
+                <span v-else>Buy via {{{{ show.ticket_provider_label }}}} &rarr;</span>
+              </a>
             </div>
           </div>
         </div>
@@ -1158,18 +1152,34 @@ createApp({{
     const isPast  = (ts) => ts < now.value - 7200;
     const isSoon  = (ts) => ts > now.value && ts < now.value + 7200;
 
+    const DEFAULT_SHOW_IMG = "{CATCAT_DATA_URI}";
     const getShowImage = (show) => {{
+      if (failedImages.value.has(show.id)) return null;
       return show.spotify_album_image_url || show.spotify_artist_image_url || show.event_image_url || null;
     }};
+
+    // Track shows whose images have errored so getShowImage returns null → fallback renders.
+    const failedImages = ref(new Set());
+    const onImgError = (e, showId) => {{
+      failedImages.value = new Set([...failedImages.value, showId]);
+      e.target.style.display = 'none';
+    }};
+    const _getShowImageRaw = (show) => show.spotify_album_image_url || show.spotify_artist_image_url || show.event_image_url || null;
 
     const lastfmUrl = (show) => {{
       const name = show.matched_artist || show.headliner;
       return `https://www.last.fm/music/${{encodeURIComponent(name)}}`;
     }};
-    const artistUrl = (show) => show.spotify_url || lastfmUrl(show);
+    const artistUrl = (show) => show.spotify_url || show.event_spotify_url || null;
 
     const matchedCount = computed(() => shows.value.filter(s => s.matched_artist !== null).length);
-    const matchPct = computed(() => shows.value.length ? Math.round(matchedCount.value / shows.value.length * 100) : 0);
+    const matchPct    = computed(() => shows.value.length ? Math.round(matchedCount.value / shows.value.length * 100) : 0);
+    const linkedCount = computed(() => shows.value.filter(s => s.spotify_url || s.event_spotify_url).length);
+    const linkedPct   = computed(() => shows.value.length ? Math.round(linkedCount.value / shows.value.length * 100) : 0);
+    const pricedCount = computed(() => shows.value.filter(s => s.price).length);
+    const pricedPct   = computed(() => shows.value.length ? Math.round(pricedCount.value / shows.value.length * 100) : 0);
+    const picturedCount = computed(() => shows.value.filter(s => s.spotify_album_image_url || s.spotify_artist_image_url || s.event_image_url).length);
+    const picturedPct   = computed(() => shows.value.length ? Math.round(picturedCount.value / shows.value.length * 100) : 0);
 
     // ── Filtered / sorted shows ─────────────────
     const filteredShows = computed(() => {{
@@ -1309,8 +1319,9 @@ createApp({{
       filteredShows, groupedShows,
       allVenueNames, venueGroups, showCountByVenue,
       setDate, resetFilters, favsChipClick, toggleExpand,
-      scoreClass, fmtTime, isPast, isSoon, getShowImage,
-      artistUrl, lastfmUrl, matchedCount, matchPct,
+      scoreClass, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG,
+      artistUrl, lastfmUrl, onImgError, failedImages, matchedCount, matchPct,
+      linkedCount, linkedPct, pricedCount, pricedPct, picturedCount, picturedPct,
     }};
   }}
 }}).mount('#app');

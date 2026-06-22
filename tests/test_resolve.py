@@ -126,6 +126,42 @@ class TestMatcher:
         assert result is not None
         assert result.status == "review", "Token-subset guard must route 'The Verve Pipe' to review"
 
+    def test_no_shared_token_guard_routes_to_review(self) -> None:
+        """Multi-token names with high char-sim but no shared word must not match.
+
+        'Like Mang' vs 'louke man' scores ~0.78 (above the 0.75 threshold) purely
+        on character overlap, but the two names share no distinctive token — a
+        coincidental match. Guard 3 routes it to review.
+        """
+        from showcat.resolve.matcher import TasteArtist
+
+        taste = [TasteArtist(artist_id=20, raw_name="louke man", mbid=None)]
+        result = match_artist("Like Mang", taste)
+        assert result is not None
+        assert result.status == "review", "No-shared-token pair must route to review"
+
+    def test_no_shared_token_guard_heather_christie(self) -> None:
+        """'Heather Christie' vs 'The Charities' — no shared distinctive token."""
+        from showcat.resolve.matcher import TasteArtist
+
+        taste = [TasteArtist(artist_id=21, raw_name="The Charities", mbid=None)]
+        result = match_artist("Heather Christie", taste)
+        assert result is not None
+        assert result.status == "review"
+
+    def test_shared_token_multiword_still_matches(self) -> None:
+        """A real multi-word fuzzy match (shared distinctive token) is unaffected.
+
+        'Bright Eyes' / 'Bright Eyez' share 'bright' (sim 0.909, not a subset) —
+        Guard 3 must NOT route this to review.
+        """
+        from showcat.resolve.matcher import TasteArtist
+
+        taste = [TasteArtist(artist_id=22, raw_name="Bright Eyez", mbid=None)]
+        result = match_artist("Bright Eyes", taste)
+        assert result is not None
+        assert result.status == "matched", "Shared-token multiword match must stay matched"
+
 
 # ---------------------------------------------------------------------------
 # ResolveStage integration tests

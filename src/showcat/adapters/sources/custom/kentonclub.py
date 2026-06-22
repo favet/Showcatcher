@@ -66,13 +66,16 @@ class KentonClubAdapter(BaseSourceAdapter):
                             continue
 
                         source_id = f"{current_date.strftime('%Y-%m-%d')}-{headliner[:10].replace(' ', '').lower()}"
-                        # Extract price if present
+                        # Extract price if posted; default to "At the door" —
+                        # Kenton Club rarely posts advance prices.
                         price_str = None
                         for b_line in current_bands:
                             price_match = re.search(r'\$\d+(?:\.\d{2})?', b_line)
                             if price_match:
                                 price_str = price_match.group(0)
                                 break
+                        if not price_str:
+                            price_str = "At the door"
 
                         events.append(
                             RawEvent(

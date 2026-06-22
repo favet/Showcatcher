@@ -1,0 +1,35 @@
+{
+  "events": [
+    {
+      "id": 10001,
+      "title": "The Lemon Twigs",
+      "start_date": "2026-07-18 20:00:00",
+      "url": "https://www.kellysolympian.com/event/the-lemon-twigs/",
+      "cost": "$12",
+      "description": "<p>Doors at 9pm, show at 10pm. All ages welcome.</p>",
+      "image": {"url": "https://www.kellysolympian.com/wp-content/uploads/lemon-twigs.jpg"}
+    },
+    {
+      "id": 10002,
+      "title": "Wye Oak",
+      "start_date": "2026-07-25 21:00:00",
+      "url": "https://www.kellysolympian.com/event/wye-oak/",
+      "cost": "$15",
+      "description": "<p>Indie folk duo from Baltimore.</p>",
+      "image": null
+    },
+    {
+      "id": 10003,
+      "title": "Partner",
+      "start_date": "2026-08-08 20:00:00",
+      "url": "https://www.kellysolympian.com/event/partner-band/",
+      "cost": "",
+      "description": "",
+      "image": {"url": "https://www.kellysolympian.com/wp-content/uploads/partner.jpg"}
+    }
+  ],
+  "total": 3,
+  "rest_url": "https://www.kellysolympian.com/wp-json/tribe/events/v1/events",
+  "previous_rest_url": null,
+  "next_rest_url": null
+}

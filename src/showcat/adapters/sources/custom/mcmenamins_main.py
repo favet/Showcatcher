@@ -39,6 +39,7 @@ class McMenaminsMainAdapter(BaseSourceAdapter):
     URL = ""
     SOURCE = ""
     DEFAULT_VENUE = ""
+    DEFAULT_PRICE: str | None = None  # "Free" for pub stages; None for ticketed rooms
 
     @property
     def source_name(self) -> str:
@@ -109,7 +110,7 @@ class McMenaminsMainAdapter(BaseSourceAdapter):
 
             card_text = card.get_text(" ", strip=True)
             price_match = re.search(r'\$\d+(?:\.\d{2})?', card_text)
-            price_str = price_match.group(0) if price_match else None
+            price_str = price_match.group(0) if price_match else self.DEFAULT_PRICE
 
             image_el = card.select_one("img")
             image_url = image_el.get("src") if image_el else None
@@ -144,12 +145,14 @@ class WhiteEagleAdapter(McMenaminsMainAdapter):
     URL = "https://www.mcmenamins.com/white-eagle-saloon-hotel/white-eagle"
     SOURCE = "white_eagle"
     DEFAULT_VENUE = "White Eagle Saloon"
+    DEFAULT_PRICE = "Free"
 
 
 class AlsDenAdapter(McMenaminsMainAdapter):
     URL = "https://www.mcmenamins.com/crystal-hotel/things-to-do/music-event-calendar"
     SOURCE = "als_den"
     DEFAULT_VENUE = "Al's Den"
+    DEFAULT_PRICE = "Free"
 
 
 class LolasRoomAdapter(McMenaminsMainAdapter):

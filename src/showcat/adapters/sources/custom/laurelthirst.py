@@ -100,7 +100,7 @@ class LaurelThirstAdapter(BaseSourceAdapter):
                         show_time=start_time_val,
                         venue="LaurelThirst Public House",
                         ticket_url=event_url,
-                        price=price_str or None,
+                        price=price_str or "Free",
                         image_url=image_url or None,
                         sold_out=(status == "sold_out"),
                     )

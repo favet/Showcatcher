@@ -85,14 +85,14 @@
 | McMenamins Kennedy School (theater) | Concordia | ~250 | Acoustic, eclectic | Dedicated | ✓ | McMenamins own site | N/A | mcmenamins.com/kennedy-school | ○ |
 | Bunk Bar | Central Eastside | ~200 | Rock, indie, eclectic | Occasional/Bar | ✗ | Eventbrite / own site | N/A | bunkbar.com | ✗ |
 | Jack London Revue | Downtown | ~150 | Jazz, blues, eclectic | Dedicated/Basement | ✓ | TicketWeb / TM | `KovZpZAkttkA` **verified** | jacklondonrevue.com | ○ |
-| Kelly's Olympian | Downtown | ~150 | Rock, punk, bar shows | Occasional/Bar | ✓ | WordPress (Tribe API) | N/A | kellysolympian.com | ○ |
+| Kelly's Olympian | Downtown | ~150 | Rock, punk, bar shows | Occasional/Bar | ✓ | WordPress (Tribe API) | N/A | kellysolympian.com | ✓ |
 | Turn! Turn! Turn! | Boise-Eliot | ~100 | Indie, experimental, DIY | Occasional/Bar | ? | Door / own site | N/A | turnturnturnnpdx.com | ○ |
 | White Eagle Saloon | N Portland | ~200 | McMenamins live stage | Dedicated | ✓ | **Etix** ✓verified | `KovZpZAFFEdA` **verified** | mcmenamins.com/white-eagle-saloon-hotel/white-eagle | ✓ |
 | Al's Den | Downtown | ~100 | Acoustic, indie, local | Dedicated/Basement | ✓ | **Etix** ✓verified | `Z7r9jZaA2K` **verified** | mcmenamins.com/crystal-hotel/things-to-do/music-event-calendar | ✓ |
 | The Old Church | Downtown | ~300 | Acoustic, folk, classical | Dedicated | ✓ | Etix / Ticketmaster | `KovZpap53e` **verified** | theoldchurch.org | ○ |
 | The Coffin Club | SE Portland | ~150 | Goth, industrial, punk | Dedicated | ✓ | Ticketleap / Ticketmaster | `Z7r9jZaA1l` **verified** | thecoffinclubpdx.com | ○ |
 | Twilight Cafe | SE Portland | ~100 | Rock, punk, metal | Occasional/Bar | ✓ | Door / Ticketmaster | `Z7r9jZa7sW` **verified** | twilightcafeandbar.com | ○ |
-| Alberta Street Pub | NE Portland | ~150 | Acoustic, Americana, pub | Occasional/Bar | ✓ | Own site / Ticketleap | N/A | albertastreetpub.com | ○ |
+| Alberta Street Pub | NE Portland | ~150 | Acoustic, Americana, pub | Occasional/Bar | ✓ | Own site / Ticketleap | N/A | albertastreetpub.com | ✓ |
 | Artichoke Music | SE Portland | ~100 | Acoustic, folk, community | Dedicated | ✓ | Own site | N/A | artichokemusic.org | ○ |
 | Blue Diamond | NE Portland | ~100 | Jazz, blues, pub stage | Occasional/Bar | ✓ | None / Door | N/A | bluediamondpdx.com | ✓ |
 | LaurelThirst Public House | NE Portland | ~150 | Bluegrass, country, folk | Occasional/Bar | ✓ | None / Door | N/A | laurelthirst.com | ✓ |
@@ -124,8 +124,10 @@ Moda Center, Veterans Memorial Coliseum, Keller Auditorium, Star Theater, Lola's
 → Action: Add these verified TM IDs to `TICKETMASTER_VENUE_IDS` in `.env`.
 
 **Tier 3 — non-TM venues requiring separate/JSON-LD/WordPress adapters:**
-Alberta Street Pub (JSON-LD), Artichoke Music (JSON-LD), Kelly's Olympian (WordPress Tribe API).
-→ Action: Build and deploy `JsonLdAdapter` (which handles generic JSON-LD and WordPress event JSON data).
+Artichoke Music (JSON-LD).
+→ Action: Build a `JsonLdAdapter` for generic JSON-LD events.
+- Alberta Street Pub: ✓ (Squarespace scraper)
+- Kelly's Olympian: ✓ (Tribe Events REST API)
 
 - Bunk Bar: ✗ Closed permanently in 2019.
 - Nova PDX (formerly Bossanova Ballroom): ✓ (DOM JSON-LD scraper implemented and tested)
