@@ -1,4 +1,4 @@
-"""Phase 8.3 — venue-direct scraper tests.
+"""Venue-direct scraper tests (Phase 8.3 + Phase 8 follow-on).
 
 Each venue adapter parses its committed fixture into RawEvents whose ticket_url
 points at the venue's real (non-Ticketmaster) ticketer. Runs offline.
@@ -9,6 +9,13 @@ from pathlib import Path
 
 from showcat.adapters.sources.custom.aladdin import AladdinAdapter
 from showcat.adapters.sources.custom.mcmenamins import CrystalBallroomAdapter
+from showcat.adapters.sources.custom.mcmenamins_main import (
+    AlsDenAdapter,
+    EdgefieldAdapter,
+    LolasRoomAdapter,
+    WhiteEagleAdapter,
+)
+from showcat.adapters.sources.custom.revhall import RevolutionHallAdapter
 from showcat.adapters.sources.custom.rhp import (
     HawthorneAdapter,
     RoselandAdapter,
@@ -112,4 +119,56 @@ class TestCrystalBallroomAdapter:
         _assert_all_etix(events)
         assert all(e.venue == "Crystal Ballroom" for e in events)
         assert all(e.source == "crystal_ballroom" for e in events)
+        assert all(e.event_date is not None for e in events)
+
+
+class TestRevolutionHallAdapter:
+    def test_parses_etix_events(self) -> None:
+        events = _parse_fixture(RevolutionHallAdapter(), "revhall.html")
+        _assert_all_etix(events)
+        assert all(e.event_date is not None for e in events)
+        assert all(e.source == "revolution_hall" for e in events)
+
+    def test_distinguishes_show_bar_venue(self) -> None:
+        events = _parse_fixture(RevolutionHallAdapter(), "revhall.html")
+        venues = {e.venue for e in events}
+        # Fixture has both Revolution Hall and Show Bar events
+        assert "Revolution Hall" in venues
+        assert "Show Bar" in venues
+
+    def test_source_ids_unique(self) -> None:
+        events = _parse_fixture(RevolutionHallAdapter(), "revhall.html")
+        ids = [e.source_id for e in events]
+        assert len(ids) == len(set(ids))
+
+
+class TestWhiteEagleAdapter:
+    def test_parses_etix_events(self) -> None:
+        events = _parse_fixture(WhiteEagleAdapter(), "whiteeagle.html")
+        _assert_all_etix(events)
+        assert all(e.venue == "White Eagle Saloon" for e in events)
+        assert all(e.event_date is not None for e in events)
+
+
+class TestAlsDenAdapter:
+    def test_parses_etix_events(self) -> None:
+        events = _parse_fixture(AlsDenAdapter(), "alsden.html")
+        _assert_all_etix(events)
+        assert all(e.venue == "Al's Den" for e in events)
+        assert all(e.event_date is not None for e in events)
+
+
+class TestLolasRoomAdapter:
+    def test_parses_etix_events(self) -> None:
+        events = _parse_fixture(LolasRoomAdapter(), "lolasroom.html")
+        _assert_all_etix(events)
+        assert all(e.venue == "Lola's Room" for e in events)
+        assert all(e.event_date is not None for e in events)
+
+
+class TestEdgefieldAdapter:
+    def test_parses_etix_concert_events(self) -> None:
+        events = _parse_fixture(EdgefieldAdapter(), "edgefield.html")
+        _assert_all_etix(events)
+        assert all(e.venue == "Edgefield Amphitheater" for e in events)
         assert all(e.event_date is not None for e in events)

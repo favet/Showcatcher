@@ -61,3 +61,21 @@ def parse_numeric_md(text: str, today: date | None = None) -> date | None:
     if not m:
         return None
     return infer_date(int(m.group(1)), int(m.group(2)), today)
+
+
+def parse_full_date(text: str, today: date | None = None) -> date | None:
+    """Parse 'Tue, June 23rd, 2026' or 'Tuesday, June 23, 2026' → date.
+
+    Strips ordinal suffixes before strptime. Falls back to parse_month_day_text
+    if the year-based parse fails.
+    """
+    import re
+    from datetime import datetime
+
+    clean = re.sub(r"(\d+)(st|nd|rd|th)\b", r"\1", text).strip()
+    for fmt in ("%a, %B %d, %Y", "%A, %B %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(clean, fmt).date()
+        except ValueError:
+            pass
+    return parse_month_day_text(text, today)

@@ -3,7 +3,14 @@ from showcat.adapters.sources.custom.bluediamond import BlueDiamondAdapter
 from showcat.adapters.sources.custom.kentonclub import KentonClubAdapter
 from showcat.adapters.sources.custom.laurelthirst import LaurelThirstAdapter
 from showcat.adapters.sources.custom.mcmenamins import CrystalBallroomAdapter
+from showcat.adapters.sources.custom.mcmenamins_main import (
+    AlsDenAdapter,
+    EdgefieldAdapter,
+    LolasRoomAdapter,
+    WhiteEagleAdapter,
+)
 from showcat.adapters.sources.custom.nofun import NoFunBarAdapter
+from showcat.adapters.sources.custom.revhall import RevolutionHallAdapter
 from showcat.adapters.sources.custom.rhp import (
     HawthorneAdapter,
     RoselandAdapter,
@@ -21,6 +28,11 @@ ALL_CUSTOM_ADAPTERS = [
     WonderBallroomAdapter,
     TrueWestAdapter,
     CrystalBallroomAdapter,
+    RevolutionHallAdapter,
+    WhiteEagleAdapter,
+    AlsDenAdapter,
+    LolasRoomAdapter,
+    EdgefieldAdapter,
     # Small / door venues
     BlueDiamondAdapter,
     LaurelThirstAdapter,

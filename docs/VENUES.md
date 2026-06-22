@@ -20,7 +20,10 @@
 > **Venue-direct Etix scrapers shipped (Phase 8.3):** Aladdin (`event--card-style`), Roseland + Hawthorne +
 > Wonder (RHP plugin), Mississippi Studios + Polaris (True West calendar), Crystal Ballroom (McMenamins
 > wm-tour-schedule). **All Ticketmaster-family brands (incl. TicketWeb, Live Nation) are now last-resort.**
-> **Still on TM (follow-on — JS-rendered, need headless/API):** Doug Fir, Revolution Hall.
+>
+> **Phase 8 follow-on scrapers shipped:** Revolution Hall (True West CMS, paginated), White Eagle Saloon +
+> Al's Den + Lola's Room + Edgefield Amphitheater (McMenamins main site `tm-panel-card` CMS).
+> **Still on TM:** Doug Fir (venue relocating, no active schedule).
 
 ## How to use this doc
 
@@ -43,7 +46,7 @@
 | Keller Auditorium | Downtown | 2,992 | Broadway, opera, ballet | Dedicated | ✓ | Ticketmaster / Portland'5 | `KovZpZAEkdFA` **verified** | portland5.org/keller-auditorium | ○ |
 | Moda Center | Rose Quarter | 19,393 | Arena rock, hip-hop, pop | Dedicated | ✓ | Ticketmaster | `KovZpa6MXe` **verified** | rosequarter.com/moda-center | ○ |
 | Veterans Memorial Coliseum | Rose Quarter | 12,000 | Mid-size arena acts | Dedicated | ✓ | Ticketmaster | `KovZpZAJ67kA` **verified** | rosequarter.com/veterans-memorial-coliseum | ○ |
-| McMenamins Edgefield Amphitheater | Troutdale | ~5,000 | Rock, folk, pop (summer only) | Dedicated | seasonal | Ticketmaster / McMenamins | `KovZpZA1vFlA` **verified** | mcmenamins.com/edgefield | ○ |
+| McMenamins Edgefield Amphitheater | Troutdale | ~5,000 | Rock, folk, pop (summer only) | Dedicated | seasonal | **Etix** ✓verified | `KovZpZA1vFlA` **verified** | mcmenamins.com/edgefield/things-to-do/music-events | ✓ |
 | Crystal Ballroom | Downtown | 1,500 | All genres, indie/alt | Dedicated | ✓ | **Etix** ✓verified | `rZ7HnEZaeyv` **verified** | crystalballroompdx.com | ✓ |
 | Roseland Theater | Downtown | 1,400 | Rock, metal, hip-hop | Dedicated | ✓ | **Etix** ✓verified | `KovZpap9re` **verified** | roselandpdx.com | ✓ |
 
@@ -53,14 +56,14 @@
 
 | Venue | Neighborhood | Cap | Genre | Live Venue? | Active | Ticketer | TM ID | Show URL | Scrape |
 |---|---|---|---|---|---|---|---|---|---|
-| Revolution Hall | Buckman | 850 | Indie, rock, eclectic | Dedicated | ✓ | Ticketmaster | `KovZpZAEkdIA` **verified** | revolutionhall.com | ✓ |
+| Revolution Hall | Buckman | 850 | Indie, rock, eclectic | Dedicated | ✓ | **Etix** ✓verified | `KovZpZAEkdIA` **verified** | revolutionhall.com | ✓ |
 | Hawthorne Theatre | Hawthorne / Buckman | 750 | Rock, metal, punk | Dedicated | ✓ | **Etix** ✓verified | `KovZpZAkn7IA` **verified** | hawthornetheater.com | ✓ |
 | Aladdin Theater | Sellwood-Moreland | 620 | Americana, folk, world | Dedicated | ✓ | **Etix** ✓verified | `KovZpa3qfe` **verified** | aladdin-theater.com | ✓ |
-| Wonder Ballroom | Alberta Arts District | 650 | Indie, rock, folk | Dedicated | ✓ | Ticketmaster | `KovZpa9hBe` **verified** | wonderballroom.com | ✓ |
+| Wonder Ballroom | Alberta Arts District | 650 | Indie, rock, folk | Dedicated | ✓ | **Etix** ✓verified | `KovZpa9hBe` **verified** | wonderballroom.com | ✓ |
 | Bossanova Ballroom | Central Eastside | ~700 | Dance, electronic, events | Dedicated | ✓ | Tixr / Ticket Fairy | N/A | novapdx.com | ○ |
-| Polaris Hall | Central Eastside | ~500 | Electronic, dance, DJ | Dedicated | ✓ | **Etix** ✓verified | `Z7r9jZadc-` **verified** | polarishallpdx.com | ○ |
+| Polaris Hall | Central Eastside | ~500 | Electronic, dance, DJ | Dedicated | ✓ | **Etix** ✓verified | `Z7r9jZadc-` **verified** | polarishallpdx.com | ✓ |
 | Star Theater | Old Town | ~350 | Rock, alternative, punk | Dedicated | ✓ | Ticketmaster | `KovZpZAIvlnA` **verified** | startheaterportland.com | ○ |
-| Lola's Room | Downtown | ~400 | Pop, dance, indie | Dedicated | ✓ | Ticketmaster | `KovZpZA1vlJA` **verified** | crystalballroompdx.com/lolas-room | ○ |
+| Lola's Room | Downtown | ~400 | Pop, dance, indie | Dedicated | ✓ | **Etix** ✓verified | `KovZpZA1vlJA` **verified** | mcmenamins.com/crystal-ballroom/lolas-room | ✓ |
 | Alberta Rose Theatre | Alberta Arts District | 350 | Americana, folk, world, jazz | Dedicated | ✓ | **Etix** ✓verified | `KovZ917AcZe` **verified** | albertarosetheatre.com | ○ |
 | Holocene | Division / Buckman | ~350 | Electronic, dance, indie | Dedicated | ✓ | **Etix** ✓verified | `KovZpZAaIIaA` **verified** | holocene.org | ○ |
 | Newmark Theatre | Downtown | 880 | Dance, chamber, spoken word | Dedicated | ✓ | Portland'5 / TM | `KovZpZA7klvA` **verified** | portland5.org/newmark-theatre | ○ |
@@ -77,15 +80,15 @@
 | Venue | Neighborhood | Cap | Genre | Live Venue? | Active | Ticketer | TM ID | Show URL | Scrape |
 |---|---|---|---|---|---|---|---|---|---|
 | Doug Fir Lounge | Lower Burnside | 300 | Indie, alt, singer-songwriter | Dedicated | ✓ | Ticketmaster | `KovZpZA1k1EA` **verified** | dougfirlounge.com | ✓ |
-| Mississippi Studios | Boise-Eliot | 200 | Indie, folk, Americana | Dedicated | ✓ | **Etix** ✓verified | `KovZ917Ai0C` **verified** | mississippistudios.com | ○ |
+| Mississippi Studios | Boise-Eliot | 200 | Indie, folk, Americana | Dedicated | ✓ | **Etix** ✓verified | `KovZ917Ai0C` **verified** | mississippistudios.com | ✓ |
 | Dante's | Old Town | ~300 | Rock, burlesque, metal | Dedicated | ✓ | Eventbrite / Ticketmaster | `KovZpZAEddeA` **verified** | dantespdx.com | ○ |
 | McMenamins Kennedy School (theater) | Concordia | ~250 | Acoustic, eclectic | Dedicated | ✓ | McMenamins own site | N/A | mcmenamins.com/kennedy-school | ○ |
 | Bunk Bar | Central Eastside | ~200 | Rock, indie, eclectic | Occasional/Bar | ✗ | Eventbrite / own site | N/A | bunkbar.com | ✗ |
 | Jack London Revue | Downtown | ~150 | Jazz, blues, eclectic | Dedicated/Basement | ✓ | TicketWeb / TM | `KovZpZAkttkA` **verified** | jacklondonrevue.com | ○ |
 | Kelly's Olympian | Downtown | ~150 | Rock, punk, bar shows | Occasional/Bar | ✓ | WordPress (Tribe API) | N/A | kellysolympian.com | ○ |
 | Turn! Turn! Turn! | Boise-Eliot | ~100 | Indie, experimental, DIY | Occasional/Bar | ? | Door / own site | N/A | turnturnturnnpdx.com | ○ |
-| White Eagle Saloon | N Portland | ~200 | McMenamins live stage | Dedicated | ✓ | McMenamins / Ticketmaster | `KovZpZAFFEdA` **verified** | mcmenamins.com/white-eagle-saloon-hotel | ○ |
-| Al's Den | Downtown | ~100 | Acoustic, indie, local | Dedicated/Basement | ✓ | McMenamins / Ticketmaster | `Z7r9jZaA2K` **verified** | mcmenamins.com/crystal-hotel/als-den | ○ |
+| White Eagle Saloon | N Portland | ~200 | McMenamins live stage | Dedicated | ✓ | **Etix** ✓verified | `KovZpZAFFEdA` **verified** | mcmenamins.com/white-eagle-saloon-hotel/white-eagle | ✓ |
+| Al's Den | Downtown | ~100 | Acoustic, indie, local | Dedicated/Basement | ✓ | **Etix** ✓verified | `Z7r9jZaA2K` **verified** | mcmenamins.com/crystal-hotel/things-to-do/music-event-calendar | ✓ |
 | The Old Church | Downtown | ~300 | Acoustic, folk, classical | Dedicated | ✓ | Etix / Ticketmaster | `KovZpap53e` **verified** | theoldchurch.org | ○ |
 | The Coffin Club | SE Portland | ~150 | Goth, industrial, punk | Dedicated | ✓ | Ticketleap / Ticketmaster | `Z7r9jZaA1l` **verified** | thecoffinclubpdx.com | ○ |
 | Twilight Cafe | SE Portland | ~100 | Rock, punk, metal | Occasional/Bar | ✓ | Door / Ticketmaster | `Z7r9jZa7sW` **verified** | twilightcafeandbar.com | ○ |
