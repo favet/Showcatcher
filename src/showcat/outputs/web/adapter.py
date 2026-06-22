@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from showcat.adapters.sources.title_parser import is_non_show
 from showcat.adapters.tickets.providers import best_link, classify_provider, provider_label
 from showcat.ingest.events.models import Event
 from showcat.ingest.history.models import Artist, ArtistTag
@@ -226,6 +227,8 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
     for event, score, _match, artist in rows:
         if event.id in seen:
             continue
+        if is_non_show(event.headliner):
+            continue
         seen.add(event.id)
 
         venue = canonicalize_venue(event.venue)
@@ -324,18 +327,18 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
     :root {{
-      --bg:           #0e0c0a;
-      --surface:      #181512;
-      --surface-2:    #221d17;
-      --text:         #ede5d8;
-      --muted:        #807361;
-      --border:       #2d271e;
-      --accent:       #e8961a;
-      --accent-dim:   rgba(232,150,26,0.15);
-      --score-hi:     #e8961a;
-      --score-mid:    #b3863b;
-      --score-lo:     #524738;
-      --tonight:      #e25822;
+      --bg:           #0c0b15;
+      --surface:      #141220;
+      --surface-2:    #1e1b2e;
+      --text:         #ede8f4;
+      --muted:        #7b6da0;
+      --border:       #2a2445;
+      --accent:       #a78bfa;
+      --accent-dim:   rgba(167,139,250,0.12);
+      --score-hi:     #a78bfa;
+      --score-mid:    #7c6cc0;
+      --score-lo:     #3d3660;
+      --tonight:      #f472b6;
       --font:         'Inter', system-ui, sans-serif;
       --mono:         'IBM Plex Mono', 'Courier New', monospace;
     }}
@@ -363,33 +366,17 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 0.75rem;
     }}
-    .brand {{ font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }}
-    .brand em {{ color: var(--accent); font-style: normal; }}
-    
-    .brand-right {{
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
+    .brand {{ font-size: 1.4rem; font-weight: 800; letter-spacing: -0.03em; }}
+    .brand-logo {{
+      background: linear-gradient(90deg, #a78bfa 0%, #e879f9 55%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }}
-    .playlist-btn {{
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 0.25rem 0.6rem;
-      border-radius: 12px;
-      border: 1px solid rgba(29, 185, 84, 0.4);
-      background: rgba(29, 185, 84, 0.05);
-      color: #1db954;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      transition: all 0.15s;
-    }}
-    .playlist-btn:hover {{
-      background: rgba(29, 185, 84, 0.15);
-      border-color: #1db954;
-    }}
+    .brand-right {{ display: flex; align-items: center; gap: 0.5rem; }}
     .brand-meta {{ font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }}
     .brand-meta strong {{ color: var(--text); }}
+    .match-stat {{ color: var(--accent); }}
 
     /* Search bar */
     .search-row {{
@@ -404,14 +391,13 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       background: rgba(255, 255, 255, 0.04);
       color: var(--text);
       border: 1px solid var(--border);
-      border-radius: 20px;
+      border-radius: 7px;
       outline: none;
-      transition: all 0.15s ease;
+      transition: border-color 0.15s ease;
     }}
     .search-input:focus {{
-      background: rgba(255, 255, 255, 0.06);
-      border-color: rgba(232, 150, 26, 0.4);
-      box-shadow: 0 0 10px rgba(232, 150, 26, 0.1);
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(167, 139, 250, 0.4);
     }}
     .clear-search {{
       position: absolute;
@@ -439,24 +425,22 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .filter-row::-webkit-scrollbar {{ display: none; }}
     .chip {{
       flex-shrink: 0;
-      font-size: 0.78rem; font-weight: 500;
-      padding: 0.35rem 0.75rem;
+      font-size: 0.75rem; font-weight: 500;
+      padding: 0.3rem 0.65rem;
       border: 1px solid var(--border);
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.02); color: var(--muted);
+      border-radius: 5px;
+      background: transparent; color: var(--muted);
       transition: all 0.12s;
       white-space: nowrap;
     }}
-    .chip:hover {{ border-color: var(--muted); color: var(--text); background: rgba(255, 255, 255, 0.05); }}
+    .chip:hover {{ border-color: var(--muted); color: var(--text); }}
     .chip.active {{
       background: var(--accent); border-color: var(--accent);
       color: var(--bg); font-weight: 600;
-      box-shadow: 0 0 10px rgba(232, 150, 26, 0.25);
     }}
     .chip.tonight-active {{
       background: var(--tonight); border-color: var(--tonight);
       color: #fff;
-      box-shadow: 0 0 10px rgba(226, 88, 34, 0.25);
     }}
     .chip-divider {{ width: 1px; height: 1.1rem; background: var(--border); flex-shrink: 0; margin: 0 0.1rem; }}
 
@@ -495,25 +479,18 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .day-header.is-tomorrow {{ color: var(--accent); border-bottom-color: rgba(232, 150, 26, 0.3); }}
     .day-count {{ opacity: 0.6; }}
 
-    /* ── Glassmorphic card design ──────────────── */
+    /* ── Card design ──────────────── */
     .show-card {{
-      background: rgba(24, 21, 18, 0.6);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.03);
-      border-radius: 12px;
-      margin-bottom: 0.75rem;
+      background: var(--surface);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
       padding: 0.75rem 1rem;
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: background 0.15s;
       user-select: none; -webkit-user-select: none;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }}
     .show-card:hover {{
-      background: rgba(34, 30, 25, 0.7);
-      border-color: rgba(232, 150, 26, 0.2);
-      transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(232, 150, 26, 0.06);
+      background: var(--surface-2);
     }}
     .show-card.is-past {{ opacity: 0.35; pointer-events: none; }}
 
@@ -557,7 +534,13 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       font-size: 0.975rem; font-weight: 600; line-height: 1.25;
       color: var(--text);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      text-decoration: none;
     }}
+    .show-headliner:hover {{
+      text-decoration: underline;
+      text-decoration-color: rgba(167, 139, 250, 0.5);
+    }}
+    .show-headliner.is-matched {{ color: var(--text); }}
     .show-sub {{
       display: flex; align-items: center; gap: 0.4rem;
       font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem;
@@ -601,23 +584,19 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .score-badge-circle.hi {{
       border: 2px solid var(--accent);
       color: var(--accent);
-      box-shadow: 0 0 10px rgba(232, 150, 26, 0.4);
-      background: rgba(232, 150, 26, 0.05);
+      background: rgba(167, 139, 250, 0.05);
     }}
     .score-badge-circle.md {{
-      border: 2px solid #b3863b;
-      color: #e5b05a;
-      box-shadow: 0 0 8px rgba(179, 134, 59, 0.25);
-      background: rgba(179, 134, 59, 0.03);
+      border: 2px solid var(--score-mid);
+      color: var(--score-mid);
     }}
     .score-badge-circle.lo {{
-      border: 2px solid #524738;
-      color: #8c7e6c;
-      background: rgba(82, 71, 56, 0.02);
+      border: 2px solid var(--score-lo);
+      color: var(--muted);
     }}
     .score-badge-circle.none {{
-      border: 2px dashed #3a3328;
-      color: #524738;
+      border: 2px dashed #2a2445;
+      color: #3d3660;
     }}
 
     .row-chevron {{
@@ -761,6 +740,17 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       color: #1ed760;
       text-decoration: underline;
     }}
+    .ticket-lastfm-link {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 500;
+      transition: color 0.15s;
+      align-self: flex-start;
+    }}
+    .ticket-lastfm-link:hover {{ color: var(--text); text-decoration: underline; }}
 
     .ticket-divider-line {{
       border-top: 1px dashed var(--border);
@@ -815,28 +805,21 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       font-weight: 700;
       font-size: 0.8rem;
       padding: 0.45rem 1rem;
-      border-radius: 20px;
+      border-radius: 7px;
       display: inline-flex;
       align-items: center;
       gap: 0.4rem;
-      transition: all 0.15s ease;
-      box-shadow: 0 4px 10px rgba(232, 150, 26, 0.2);
+      transition: opacity 0.15s ease;
     }}
-    .ticket-btn-link:hover {{
-      transform: translateY(-1px);
-      box-shadow: 0 6px 14px rgba(232, 150, 26, 0.35);
-    }}
+    .ticket-btn-link:hover {{ opacity: 0.88; }}
     .ticket-btn-link.placeholder-link {{
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border);
       color: var(--muted);
-      box-shadow: none;
     }}
     .ticket-btn-link.placeholder-link:hover {{
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.07);
       color: var(--text);
-      border-color: var(--muted);
-      transform: none;
     }}
     .travel-label {{
       font-family: var(--mono); font-size: 0.7rem; color: var(--muted);
@@ -917,10 +900,9 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
   <header class="site-header">
     <div class="header-inner">
       <div class="brand-row">
-        <div class="brand">Show<em>cat</em></div>
+        <div class="brand"><span class="brand-logo">showcat</span></div>
         <div class="brand-right">
-          <button v-if="spotifyPlaylistId" class="playlist-btn" @click="playlistOpen = true" title="Open Spotify Playlist">🎵 Taste Playlist</button>
-          <div class="brand-meta"><strong>{{{{ filteredShows.length }}}}</strong> shows &middot; {ts}</div>
+          <div class="brand-meta"><strong>{{{{ filteredShows.length }}}}</strong> shows &middot; <span class="match-stat">{{{{ matchPct }}}}% matched</span> &middot; {ts}</div>
         </div>
       </div>
 
@@ -975,13 +957,14 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
           <!-- Thumbnail Image -->
           <div class="show-thumb-container">
             <img v-if="getShowImage(show)" :src="getShowImage(show)" class="show-thumb" loading="lazy" />
-            <div v-else class="show-thumb-fallback">🎵</div>
+            <div v-else class="show-thumb-fallback"></div>
           </div>
 
           <!-- Show Information -->
           <div class="show-info">
             <div class="show-headliner-row">
-              <span class="show-headliner">{{{{ show.headliner }}}}</span>
+              <a class="show-headliner" :class="{{'is-matched': show.matched_artist}}"
+                 :href="artistUrl(show)" target="_blank" rel="noopener" @click.stop>{{{{ show.headliner }}}}</a>
             </div>
             <div class="show-sub">
               <span class="show-venue">{{{{ show.venue }}}}</span>
@@ -1017,7 +1000,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
               <!-- Ticket Image stub -->
               <div class="ticket-art-wrap">
                 <img v-if="getShowImage(show)" :src="getShowImage(show)" class="ticket-art" loading="lazy" />
-                <div v-else class="ticket-art-fallback">🎵</div>
+                <div v-else class="ticket-art-fallback"></div>
               </div>
 
               <!-- Supporting acts & doors info -->
@@ -1046,6 +1029,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
                   <svg style="width:14px;height:14px;fill:currentColor;vertical-align:middle;margin-right:2px;" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.565.387-.86.207-2.377-1.454-5.37-1.783-8.893-.982-.336.076-.67-.135-.747-.472-.076-.336.136-.67.472-.747 3.856-.88 7.15-.509 9.821 1.13.295.18.387.563.207.864zm1.225-2.72c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.08-1.182-.413.125-.847-.107-.972-.52-.125-.413.108-.847.52-.972 3.668-1.114 8.237-.575 11.35 1.343.366.226.486.706.26 1.073zm.107-2.846C14.538 8.71 8.86 8.52 5.58 9.516c-.523.158-1.08-.143-1.24-.667-.158-.524.143-1.08.667-1.24 3.763-1.14 10.016-.92 13.93 1.403.472.28.623.893.342 1.365-.28.472-.893.622-1.366.342z"/></svg>
                   Listen on Spotify
                 </a>
+                <a class="ticket-lastfm-link" :href="lastfmUrl(show)" target="_blank" rel="noopener" @click.stop>Last.fm &rarr;</a>
               </div>
             </div>
 
@@ -1059,7 +1043,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
               </div>
 
               <div style="display:flex;align-items:center;gap:0.75rem;">
-                <span class="travel-label" v-if="show.travel_minutes">🚗 {{{{ show.travel_minutes }}}}m away</span>
+                <span class="travel-label" v-if="show.travel_minutes">{{{{ show.travel_minutes }}}}m away</span>
                 <a v-if="show.ticket_url" :href="show.ticket_url" target="_blank" rel="noopener"
                    class="tix-pill ticket-btn-link" :class="{{ 'placeholder-link': show.is_placeholder_link }}"
                    @click.stop>
@@ -1177,6 +1161,15 @@ createApp({{
     const getShowImage = (show) => {{
       return show.spotify_album_image_url || show.spotify_artist_image_url || show.event_image_url || null;
     }};
+
+    const lastfmUrl = (show) => {{
+      const name = show.matched_artist || show.headliner;
+      return `https://www.last.fm/music/${{encodeURIComponent(name)}}`;
+    }};
+    const artistUrl = (show) => show.spotify_url || lastfmUrl(show);
+
+    const matchedCount = computed(() => shows.value.filter(s => s.matched_artist !== null).length);
+    const matchPct = computed(() => shows.value.length ? Math.round(matchedCount.value / shows.value.length * 100) : 0);
 
     // ── Filtered / sorted shows ─────────────────
     const filteredShows = computed(() => {{
@@ -1317,6 +1310,7 @@ createApp({{
       allVenueNames, venueGroups, showCountByVenue,
       setDate, resetFilters, favsChipClick, toggleExpand,
       scoreClass, fmtTime, isPast, isSoon, getShowImage,
+      artistUrl, lastfmUrl, matchedCount, matchPct,
     }};
   }}
 }}).mount('#app');

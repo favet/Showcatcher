@@ -111,6 +111,10 @@ _NON_SHOW = re.compile(
     r"|rip\s+city\s+(?:bingo|music\s+bingo|bingo-?oke)"
     r"|trivia\s+with\s+\w+"
     r"|karaoke\s+from\s+hell"            # TM entry
+    r"|karaoke(?:\s+night|\s+show|$)"    # bare "Karaoke" or "Karaoke Night"
+    r"|.*\bopen\s+mic\b"                 # "PDX Songwriters Open Mic", etc.
+    r"|.*\btrivia\s+night\b"
+    r"|.*\bbingo\s+night\b"
     r"|two[\s\-]step\s+tuesday"
     r"|two[\s\-]step\s+lesson"
     r"|whiskey\s+wednesday"

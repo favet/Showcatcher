@@ -20,6 +20,7 @@ from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.tickets.providers import classify_provider
 from showcat.core.base import BaseStage
 from showcat.adapters.sources.title_parser import (
+    is_non_show,
     normalize_title,
     split_multi_artist_comma,
     split_multi_artist_plus,
@@ -104,6 +105,9 @@ class EventSnapshotStage(BaseStage):
             clean_headliner, all_openers = split_multi_artist_comma(
                 clean_headliner, existing_openers=plus_openers
             )
+
+            if is_non_show(clean_headliner):
+                continue
 
             ticket_provider = classify_provider(raw_event.ticket_url)
             # Upsert the event row
