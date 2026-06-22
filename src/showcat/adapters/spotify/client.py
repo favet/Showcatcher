@@ -35,7 +35,20 @@ class Resolution:
 
 
 class SpotifyError(Exception):
-    """Raised on a non-success Spotify API response."""
+    """Raised on a non-success Spotify API response.
+
+    Carries the HTTP ``status_code`` and, for 429 responses, the server's
+    ``retry_after`` (seconds) so callers can back off intelligently instead of
+    parsing the message string. Spotify's 429 cooldown is a fixed countdown —
+    a large ``retry_after`` (minutes/hours) means hammering won't help.
+    """
+
+    def __init__(
+        self, message: str, status_code: int | None = None, retry_after: int | None = None
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 class SpotifyClient:
@@ -50,12 +63,26 @@ class SpotifyClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.access_token}"}
 
+    @staticmethod
+    def _retry_after(resp: requests.Response) -> int | None:
+        raw = resp.headers.get("Retry-After")
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         resp = self._session.get(
             f"{SPOTIFY_API_BASE}{path}", headers=self._headers(), params=params, timeout=30
         )
         if resp.status_code != 200:
-            raise SpotifyError(f"GET {path} failed ({resp.status_code}): {resp.text}")
+            raise SpotifyError(
+                f"GET {path} failed ({resp.status_code}): {resp.text}",
+                status_code=resp.status_code,
+                retry_after=self._retry_after(resp),
+            )
         data: dict[str, Any] = resp.json()
         return data
 

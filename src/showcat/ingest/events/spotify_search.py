@@ -27,7 +27,16 @@ from showcat.resolve.models import EventMatch
 logger = logging.getLogger(__name__)
 
 SIMILARITY_THRESHOLD = 0.55
-REQUEST_DELAY_S = 0.12  # ~8 req/s, well under Spotify's 10 req/s limit
+
+# Spotify rate-limits on a rolling ~30-second window; sustained over-rate triggers
+# a *fixed multi-hour cooldown* (observed Retry-After ~10h), not a short backoff —
+# and that cooldown blocks the discovery-playlist refresh, which shares the quota.
+# So this stage is deliberately gentle:
+#   - REQUEST_DELAY_S keeps us to ~2.5 req/s (~75 per 30s window, well under the cap).
+#   - MAX_PER_RUN caps the burst so the initial backfill spreads over several runs
+#     (results persist per-event, so each run makes progress without redoing work).
+REQUEST_DELAY_S = float(os.environ.get("SPOTIFY_SEARCH_DELAY_S", "0.4"))
+MAX_PER_RUN = int(os.environ.get("SPOTIFY_SEARCH_MAX_PER_RUN", "100"))
 
 
 class EventSpotifySearchStage(BaseStage):
@@ -47,14 +56,18 @@ class EventSpotifySearchStage(BaseStage):
         if not refresh_token:
             raise RuntimeError("SPOTIFY_REFRESH_TOKEN must be set")
         auth = SpotifyAuth.from_env()
-        token = auth.refresh(SpotifyToken(access_token="", refresh_token=refresh_token, expires_at=0))
+        token = auth.refresh(
+            SpotifyToken(access_token="", refresh_token=refresh_token, expires_at=0)
+        )
         return SpotifyClient(access_token=token.access_token)
 
     def _run(self, session: Session, *args: Any, **kwargs: Any) -> int:  # noqa: ARG002
         today = date.today()
         client = self._build_client()
 
-        # Upcoming events without a confirmed taste match and not yet searched
+        # Upcoming events without a confirmed taste match and not yet searched.
+        # Capped per run so a large initial backlog doesn't blow the Spotify
+        # window — results persist, so subsequent runs drain the rest.
         rows = (
             session.execute(
                 select(Event)
@@ -65,52 +78,48 @@ class EventSpotifySearchStage(BaseStage):
                 .where(EventMatch.id.is_(None))
                 .where(Event.date >= today)
                 .where(Event.event_spotify_url.is_(None))
+                .order_by(Event.date.asc())
+                .limit(MAX_PER_RUN)
             )
             .scalars()
             .all()
         )
+        logger.info("Spotify search batch", extra={"batch_size": len(rows), "cap": MAX_PER_RUN})
 
         records_updated = 0
-        consecutive_429s = 0
-        MAX_CONSECUTIVE_429S = 3
 
         for event in rows:
             time.sleep(REQUEST_DELAY_S)
             result = None
             had_error = False
-            backoff = 15.0
 
-            for attempt in range(4):  # up to 3 retries on 429
-                try:
-                    result = client.search_artist(event.headliner)
-                    consecutive_429s = 0
-                    break
-                except SpotifyError as e:
-                    if "429" in str(e):
-                        consecutive_429s += 1
-                        if consecutive_429s >= MAX_CONSECUTIVE_429S:
-                            logger.warning(
-                                "Rate limit persistent — stopping stage early; %d events remain",
-                                len(rows) - records_updated,
-                            )
-                            session.commit()
-                            return records_updated
-                        logger.info("Rate limited, backing off %.0fs (attempt %d)", backoff, attempt + 1)
-                        time.sleep(backoff)
-                        backoff *= 2
-                    else:
-                        had_error = True
-                        logger.warning("Spotify API error for '%s': %s", event.headliner, e)
-                        break
-                except Exception as e:
-                    had_error = True
-                    logger.warning("Unexpected error searching Spotify for '%s': %s", event.headliner, e)
-                    break
+            try:
+                result = client.search_artist(event.headliner)
+            except SpotifyError as e:
+                if e.status_code == 429:
+                    # Spotify's 429 is a fixed, often multi-hour cooldown — retrying
+                    # now can't succeed and only risks extending it. Stop cleanly and
+                    # leave the rest NULL so a later run (after the window) resumes.
+                    logger.warning(
+                        "Spotify rate limited (429) — stopping stage; %d events left this batch. "
+                        "Retry-After=%ss",
+                        len(rows) - records_updated,
+                        e.retry_after if e.retry_after is not None else "unknown",
+                    )
+                    session.commit()
+                    return records_updated
+                had_error = True
+                logger.warning("Spotify API error for '%s': %s", event.headliner, e)
+            except Exception as e:
+                had_error = True
+                logger.warning(
+                    "Unexpected error searching Spotify for '%s': %s", event.headliner, e
+                )
 
             if result is None:
                 # Only write "none" for a clean empty response — not for transient errors.
                 # Errors leave event_spotify_url = NULL so the next run retries.
-                if not had_error and consecutive_429s == 0:
+                if not had_error:
                     event.event_spotify_url = "none"
                     session.add(event)
                     records_updated += 1

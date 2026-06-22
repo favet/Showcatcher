@@ -91,6 +91,12 @@ Format: `Dn — Title — Decision — Why — Status`.
 **Why:** A single embedded asset keeps the static page self-contained (no external image host) and gives a consistent brand mascot. Shipping it inside the package (not just `Media/`) means it deploys with the web output regardless of CWD.
 **Status:** Firm.
 
+### D21 — Spotify quota: throttle event-search so it can't lock out the playlist refresh *(resolved 2026-06-22)*
+**Decision:** `EventSpotifySearchStage` caps each run (`SPOTIFY_SEARCH_MAX_PER_RUN`, default 100), paces to ~2.5 req/s (`SPOTIFY_SEARCH_DELAY_S`, default 0.4), and **stops immediately on a 429** (reading `SpotifyError.retry_after`) instead of retrying. Results persist per-event, so a large backlog drains over several runs.
+**Why:** All Spotify operations share one dev-mode app quota, and exceeding the rolling ~30-second window triggers a **fixed multi-hour cooldown** (observed `Retry-After` ≈ 9.9h). On 2026-06-22 the stage fired ~251 `/search` calls at ~8 req/s and locked out the discovery-playlist refresh (`cli/playlist write`, which also needs `/search`) for the rest of the day. Proven by `tests/test_spotify_search.py` (cap + stop-on-429 + transient-error handling).
+**Operational rule:** don't run a large event-search batch on a day you intend to refresh the playlist.
+**Status:** Firm. See [[reference-spotify-rate-limit]] in memory for the empirical detail.
+
 ## Open questions (do not hardcode silently — resolve in the noted phase)
 
 ### D13 — Spotify account is Premium; live-write bridge path chosen *(resolved Phase 5, OQ1)*
