@@ -16,6 +16,11 @@
 > Hall, Lola's Room, White Eagle, Al's Den, Edgefield.
 > Net effect: the planned Dice/Eventbrite adapters are mostly unnecessary — **one Etix adapter covers the
 > majority of dedicated venues.** TM stays only as a discovery safety-net + last-resort link.
+>
+> **Venue-direct Etix scrapers shipped (Phase 8.3):** Aladdin (`event--card-style`), Roseland + Hawthorne +
+> Wonder (RHP plugin), Mississippi Studios + Polaris (True West calendar), Crystal Ballroom (McMenamins
+> wm-tour-schedule). **All Ticketmaster-family brands (incl. TicketWeb, Live Nation) are now last-resort.**
+> **Still on TM (follow-on — JS-rendered, need headless/API):** Doug Fir, Revolution Hall.
 
 ## How to use this doc
 
