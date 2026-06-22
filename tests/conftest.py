@@ -85,7 +85,7 @@ def guard_not_prod_db() -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_db(guard_not_prod_db: None) -> Generator[None, None, None]:
+def setup_db(guard_not_prod_db: None) -> Generator[None, None, None]:  # noqa: ARG001
     """Ensure database tables exist for the testing session (on the TEST db)."""
     Base.metadata.create_all(bind=engine)
     yield

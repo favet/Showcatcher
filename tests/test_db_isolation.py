@@ -3,9 +3,8 @@
 Regression test for the data-loss incident where the session fixture's
 drop_all() wiped the production database because tests ran against it.
 """
-from sqlalchemy.engine import make_url
-
 from conftest import TEST_DATABASE_URL, engine
+from sqlalchemy.engine import make_url
 
 from showcat.core.database import DATABASE_URL as PROD_DATABASE_URL
 
