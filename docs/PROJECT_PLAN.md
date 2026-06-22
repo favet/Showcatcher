@@ -279,7 +279,8 @@ To unblock the JS-rendered venues in a future session: use a headless browser (P
 - [x] `travel.py` module is shared; fallback dict covers all small venues including Alberta Street Pub and Kelly's Olympian. *(Proven by `tests/test_travel.py`, 10 tests)*
 - [x] `event_spotify_url` and `description` data live in DB and appear in the rendered UI. *(2026-06-22: 251 event_spotify_url rows + 181 descriptions in DB; deployed page renders ~177 descriptions and the catcat default image. Ticketmaster `info`/`pleaseNote` now feeds `description` — `tests/test_event_ingest.py::TestTicketmasterAdapter`.)*
 
-> **Description coverage note.** Descriptions come from Ticketmaster (`info`/`pleaseNote`) and the TrueWest cluster. The RHP-platform venue *list* views (Roseland, Hawthorne, Wonder, Alberta Rose, Holocene) and GetDown's JSON-LD carry no description blurb — those live only on per-event detail pages, so broader coverage needs an N+1 detail-page fetch step (deferred follow-on).
+> **Description coverage note.** Descriptions come from Ticketmaster (`info`/`pleaseNote`) and the TrueWest cluster — these are real artist/show blurbs. The RHP-platform venue *list* views (Roseland, Hawthorne, Wonder, Alberta Rose, Holocene) and GetDown's JSON-LD carry no blurb.
+> **Investigated 2026-06-22 and rejected:** RHP per-event *detail* pages (`/event/...`) do have a server-rendered `.singleEventDescription`, but its content is **pure logistics boilerplate** — date, age policy, refund/resale warnings, VIP-package contents — with no artist description. Scraping it would clutter cards with refund policies, so the N+1 detail-page fetch is **not worth building** for RHP. Current TM + TrueWest coverage is the right coverage; no further description work is planned.
 
 ---
 
