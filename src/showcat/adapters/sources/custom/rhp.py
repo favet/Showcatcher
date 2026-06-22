@@ -44,29 +44,37 @@ class RhpVenueAdapter(BaseSourceAdapter):
         events: list[RawEvent] = []
         seen: set[str] = set()
 
-        for row in soup.select(".rhp-event__single-event--list"):
+        # RHP renders two row containers depending on the page/view:
+        #   .rhp-event__single-event--list  (homepage list — Roseland/Hawthorne)
+        #   .rhpSingleEvent / .eventWrapper (the /events/ view — Wonder)
+        # Both share the same inner field classes.
+        rows = soup.select(".rhp-event__single-event--list") or soup.select(".rhpSingleEvent")
+        for row in rows:
             link = row.select_one('a[href*="etix.com/ticket/p/"]') or row.select_one(
                 ".rhp-event-cta a[href]"
             )
-            if not link:
-                continue
-            ticket_url = str(link.get("href", "")).strip()
-            if not ticket_url:
+            ticket_url = str(link.get("href", "")).strip() if link else ""
+            # Skip rows without a real ticket link (sold-out / moved / TBA).
+            if not ticket_url.startswith("http"):
                 continue
 
-            title_el = row.select_one(".rhp-event__title--list")
+            # RHP ships two field-class variants (list view vs month view);
+            # try both.
+            title_el = row.select_one(".rhp-event__title--list, .eventTitleDiv")
             headliner = title_el.get_text(strip=True) if title_el else ""
             if not headliner:
                 continue
 
-            date_el = row.select_one(".rhp-event__date--list")
+            date_el = row.select_one(
+                ".rhp-event__date--list, .singleEventDate, .dateEvent"
+            )
             event_date = (
                 parse_month_day_text(date_el.get_text(" ", strip=True)) if date_el else None
             )
             if event_date is None:
                 continue
 
-            time_el = row.select_one(".rhp-event__time-text--list")
+            time_el = row.select_one(".rhp-event__time-text--list, .eventDoorStartDate")
             doors_time = show_time = None
             if time_el:
                 doors_time, show_time = extract_doors_show_times(time_el.get_text(" ", strip=True))
@@ -110,3 +118,10 @@ class HawthorneAdapter(RhpVenueAdapter):
     URL = "https://www.hawthornetheatre.com/"
     SOURCE = "hawthorne_theatre"
     DEFAULT_VENUE = "Hawthorne Theatre"
+
+
+class WonderBallroomAdapter(RhpVenueAdapter):
+    # The homepage lazy-loads events; the /events/ view server-renders them.
+    URL = "https://wonderballroom.com/events/"
+    SOURCE = "wonder_ballroom"
+    DEFAULT_VENUE = "Wonder Ballroom"

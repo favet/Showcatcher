@@ -9,7 +9,11 @@ from pathlib import Path
 
 from showcat.adapters.sources.custom.aladdin import AladdinAdapter
 from showcat.adapters.sources.custom.mcmenamins import CrystalBallroomAdapter
-from showcat.adapters.sources.custom.rhp import HawthorneAdapter, RoselandAdapter
+from showcat.adapters.sources.custom.rhp import (
+    HawthorneAdapter,
+    RoselandAdapter,
+    WonderBallroomAdapter,
+)
 from showcat.adapters.sources.custom.truewest import TrueWestAdapter
 from showcat.adapters.tickets.providers import classify_provider
 
@@ -79,6 +83,16 @@ class TestHawthorneAdapter:
         _assert_all_etix(events)
         assert all(e.venue == "Hawthorne Theatre" for e in events)
         assert all(e.source == "hawthorne_theatre" for e in events)
+
+
+class TestWonderAdapter:
+    def test_parses_etix_events_month_view(self) -> None:
+        # Wonder's /events/ uses RHP's month-view field classes (eventTitleDiv,
+        # dateEvent, eventDoorStartDate) — the adapter handles both variants.
+        events = _parse_fixture(WonderBallroomAdapter(), "wonder.html")
+        _assert_all_etix(events)
+        assert all(e.venue == "Wonder Ballroom" for e in events)
+        assert all(e.event_date is not None for e in events)
 
 
 class TestTrueWestAdapter:
