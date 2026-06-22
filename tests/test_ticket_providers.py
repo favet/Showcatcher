@@ -19,13 +19,18 @@ from showcat.ingest.events.snapshot import EventSnapshotStage
 class TestClassifyProvider:
     def test_ticketmaster_domains(self) -> None:
         assert classify_provider("https://www.ticketmaster.com/event/abc") == "ticketmaster"
-        assert classify_provider("https://concerts.livenation.com/x") == "ticketmaster"
 
     def test_named_non_tm_ticketers(self) -> None:
         assert classify_provider("https://www.etix.com/ticket/p/123/show") == "etix"
         assert classify_provider("https://dice.fm/event/abc") == "dice"
         assert classify_provider("https://www.eventbrite.com/e/123") == "eventbrite"
+
+    def test_ticketmaster_family_brands(self) -> None:
+        # TM-owned brands classify distinctly but are all last-resort tier.
         assert classify_provider("https://www.ticketweb.com/event/9") == "ticketweb"
+        assert classify_provider("https://concerts.livenation.com/x") == "livenation"
+        assert classify_provider("https://www.frontgatetickets.com/e/1") == "frontgate"
+        assert classify_provider("https://www.universe.com/events/x") == "universe"
 
     def test_unknown_real_host_is_venue(self) -> None:
         assert classify_provider("https://crystalballroompdx.com/events/foo") == "venue"
@@ -44,6 +49,19 @@ class TestPreferenceRanking:
 
     def test_venue_beats_ticketmaster(self) -> None:
         assert rank_of("venue") > rank_of("ticketmaster")
+
+    def test_all_tm_family_is_last_resort(self) -> None:
+        # Every Ticketmaster-owned brand ranks below the venue's own site and
+        # below every named non-TM ticketer.
+        for tm in ("ticketmaster", "livenation", "ticketweb", "frontgate", "universe"):
+            assert rank_of(tm) < rank_of("venue"), tm
+            assert rank_of(tm) < rank_of("etix"), tm
+
+    def test_venue_link_beats_ticketweb(self) -> None:
+        url, provider = best_link(
+            ["https://www.ticketweb.com/event/9", "https://somevenue.com/shows/x"]
+        )
+        assert provider == "venue"
 
     def test_ticketmaster_beats_unknown_none(self) -> None:
         assert rank_of("ticketmaster") > rank_of("unknown")

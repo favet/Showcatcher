@@ -14,13 +14,18 @@ Pure and offline — unit-tested without network or DB.
 from urllib.parse import urlparse
 
 # Domain fragments → provider key. Checked as substrings of the host.
+# NOTE: Ticketmaster owns several brands (Live Nation, TicketWeb, Front Gate,
+# Universe). Per D17 / owner directive, ALL Ticketmaster-family properties are
+# last-resort — only shown when nothing else exists.
 _DOMAIN_PROVIDERS: list[tuple[str, str]] = [
     ("ticketmaster.", "ticketmaster"),
-    ("livenation.", "ticketmaster"),
+    ("livenation.", "livenation"),
+    ("ticketweb.", "ticketweb"),
+    ("frontgatetickets.", "frontgate"),
+    ("universe.com", "universe"),
     ("etix.com", "etix"),
     ("dice.fm", "dice"),
     ("eventbrite.", "eventbrite"),
-    ("ticketweb.", "ticketweb"),
     ("tixr.com", "tixr"),
     ("seetickets.", "seetickets"),
     ("axs.com", "axs"),
@@ -40,19 +45,23 @@ _DOMAIN_PROVIDERS: list[tuple[str, str]] = [
 
 # Platforms that are non-TM, event-specific ticketers. All share the top tier.
 _TICKETER_PROVIDERS = {
-    "etix", "dice", "eventbrite", "ticketweb", "tixr", "seetickets", "axs",
+    "etix", "dice", "eventbrite", "tixr", "seetickets", "axs",
     "ticketleap", "showclix", "ticketfairy", "simpletix", "seated",
     "audienceview", "portland5",
 }
 
+# Ticketmaster-owned brands — demoted to last-resort tier (below venue-own).
+_TM_FAMILY = {"ticketmaster", "livenation", "ticketweb", "frontgate", "universe"}
+
 # Preference ranking — higher is preferred. Named non-TM ticketers win; a
-# venue's own site beats Ticketmaster (an "internal site" per project policy);
-# Ticketmaster is last-resort; unknown/none lowest.
+# venue's own site beats any Ticketmaster property (an "internal site" per
+# project policy); Ticketmaster-family is last-resort; unknown/none lowest.
 _TICKETER_RANK = 100
+_TM_FAMILY_RANK = 20
 PROVIDER_RANK: dict[str, int] = {
     **dict.fromkeys(_TICKETER_PROVIDERS, _TICKETER_RANK),
     "venue": 60,
-    "ticketmaster": 20,
+    **dict.fromkeys(_TM_FAMILY, _TM_FAMILY_RANK),
     "unknown": 10,
     "none": 0,
 }
@@ -61,7 +70,6 @@ _LABELS: dict[str, str] = {
     "etix": "Etix",
     "dice": "Dice",
     "eventbrite": "Eventbrite",
-    "ticketweb": "TicketWeb",
     "tixr": "Tixr",
     "seetickets": "See Tickets",
     "axs": "AXS",
@@ -76,6 +84,10 @@ _LABELS: dict[str, str] = {
     "bandsintown": "Bandsintown",
     "venue": "Venue",
     "ticketmaster": "Ticketmaster",
+    "livenation": "Live Nation",
+    "ticketweb": "TicketWeb",
+    "frontgate": "Front Gate",
+    "universe": "Universe",
     "unknown": "Tickets",
     "none": "Tickets",
 }
