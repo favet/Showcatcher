@@ -339,7 +339,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       --surface:      #141220;
       --surface-2:    #1e1b2e;
       --text:         #ede8f4;
-      --muted:        #7b6da0;
+      --muted:        #a195c1;
       --border:       #2a2445;
       --accent:       #a78bfa;
       --accent-dim:   rgba(167,139,250,0.12);
@@ -395,21 +395,22 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     }}
     .brand-meta {{ font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }}
     .brand-meta strong {{ color: var(--text); }}
-    /* Health metrics — a clean row of value+label units (bold coloured number,
-       small muted uppercase label), evenly spaced, no dot separators. */
+    /* Health metrics — progress bars */
     .health-stats {{
-      display: flex; flex-wrap: wrap; align-items: baseline;
-      gap: 0.15rem 0.9rem; margin-bottom: 0.7rem;
-      font-family: var(--mono); font-size: 0.6rem;
-      letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+      display: flex; gap: 0.75rem; margin-bottom: 0.85rem;
+      font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--muted);
     }}
-    .hs {{ display: inline-flex; align-items: baseline; gap: 0.3rem; cursor: default; }}
-    .hs-v {{ font-size: 0.82rem; font-weight: 700; font-feature-settings: 'tnum'; line-height: 1; }}
-    .hs-taste {{ color: var(--accent); }}
-    .hs-linked {{ color: #34d399; }}
-    .hs-priced {{ color: #fbbf24; }}
-    .hs-pictured {{ color: #f472b6; }}
-    .hs-located {{ color: #60a5fa; }}
+    .hs-col {{ flex: 1; display: flex; flex-direction: column; gap: 0.3rem; }}
+    .hs-label {{ display: flex; justify-content: space-between; align-items: baseline; }}
+    .hs-v {{ font-size: 0.7rem; font-weight: 700; font-feature-settings: 'tnum'; }}
+    .hs-bar-bg {{ width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }}
+    .hs-bar-fill {{ height: 100%; border-radius: 2px; transition: width 0.5s ease-out; }}
+    .hs-taste .hs-bar-fill {{ background: var(--accent); }}
+    .hs-linked .hs-bar-fill {{ background: #34d399; }}
+    .hs-priced .hs-bar-fill {{ background: #fbbf24; }}
+    .hs-pictured .hs-bar-fill {{ background: #f472b6; }}
+    .hs-located .hs-bar-fill {{ background: #60a5fa; }}
 
     /* Search bar */
     .search-row {{
@@ -606,10 +607,10 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       display: flex; flex-wrap: wrap; gap: 0.2rem; margin-top: 0.15rem;
     }}
     .micro-genre {{
-      font-size: 0.6rem; font-weight: 600; padding: 0.06rem 0.3rem;
-      border-radius: 3px;
-      background: rgba(167,139,250,0.07); border: 1px solid rgba(167,139,250,0.15);
-      color: #a78bfa; text-transform: lowercase; letter-spacing: 0.01em;
+      font-size: 0.6rem; font-weight: 500; padding: 0.06rem 0.35rem;
+      border-radius: 4px;
+      background: transparent; border: 1px solid rgba(255,255,255,0.12);
+      color: var(--muted); text-transform: lowercase; letter-spacing: 0.01em;
     }}
 
     /* Score badge — only shown when scored; unscored shows just have the chevron */
@@ -618,10 +619,25 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       width: 2.1rem; height: 2.1rem; border-radius: 50%;
       font-family: var(--mono); font-size: 0.78rem; font-weight: 700;
       flex-shrink: 0; align-self: center;
+      margin-right: 0.5rem;
+      position: relative;
     }}
-    .score-badge-circle.hi {{ border: 2px solid var(--accent); color: var(--accent); background: rgba(167,139,250,0.06); }}
-    .score-badge-circle.md {{ border: 2px solid var(--score-mid); color: var(--score-mid); }}
-    .score-badge-circle.lo {{ border: 2px solid #2e2a4a; color: #5a5080; }}
+    .score-badge-circle::before {{
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      padding: 2px; /* ring thickness */
+      background: conic-gradient(currentColor calc(var(--score, 0) * 1%), rgba(255,255,255,0.05) 0);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }}
+    .score-badge-circle.hi {{ color: var(--accent); }}
+    .score-badge-circle.md {{ color: var(--score-mid); }}
+    .score-badge-circle.lo {{ color: #5a5080; }}
+    .score-badge-circle.zero {{ color: rgba(255,255,255,0.2); font-weight: 400; }}
     .score-badge-circle.none {{ display: none; }}
 
     .row-chevron {{
@@ -722,8 +738,28 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       color: #c7bdae;
       line-height: 1.45;
       margin-top: 0.25rem;
-      font-style: italic;
     }}
+    .ticket-description p {{
+      margin-bottom: 0.6rem;
+    }}
+    .ticket-description p:last-child {{
+      margin-bottom: 0;
+    }}
+    .desc-clamp {{
+      max-height: 120px;
+      overflow: hidden;
+      -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+      mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+    }}
+    .desc-toggle-btn {{
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      align-self: flex-start;
+      margin-top: -0.2rem;
+    }}
+    .desc-toggle-btn:hover {{ text-decoration: underline; }}
 
     .ticket-times-row {{
       display: flex;
@@ -821,7 +857,8 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       font-family: var(--mono);
       font-size: 1rem;
       font-weight: 700;
-      color: var(--accent);
+      color: var(--text);
+      opacity: 0.85;
     }}
 
     .ticket-btn-link {{
@@ -929,11 +966,26 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
         </div>
       </div>
       <div class="health-stats">
-        <span class="hs" title="Matched to your Last.fm taste"><b class="hs-v hs-taste">{{{{ matchPct }}}}%</b> taste</span>
-        <span class="hs" title="Linked to a Spotify artist"><b class="hs-v hs-linked">{{{{ linkedPct }}}}%</b> linked</span>
-        <span class="hs" title="Has a ticket price"><b class="hs-v hs-priced">{{{{ pricedPct }}}}%</b> priced</span>
-        <span class="hs" title="Has artist artwork"><b class="hs-v hs-pictured">{{{{ picturedPct }}}}%</b> pictured</span>
-        <span class="hs" title="Has a drive-time ETA"><b class="hs-v hs-located">{{{{ locatedPct }}}}%</b> located</span>
+        <div class="hs-col hs-taste" title="Matched to your Last.fm taste">
+          <div class="hs-label"><span>Taste</span><span class="hs-v">{{{{ matchPct }}}}%</span></div>
+          <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: matchPct + '%'}}"></div></div>
+        </div>
+        <div class="hs-col hs-linked" title="Linked to a Spotify artist">
+          <div class="hs-label"><span>Linked</span><span class="hs-v">{{{{ linkedPct }}}}%</span></div>
+          <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: linkedPct + '%'}}"></div></div>
+        </div>
+        <div class="hs-col hs-priced" title="Has a ticket price">
+          <div class="hs-label"><span>Priced</span><span class="hs-v">{{{{ pricedPct }}}}%</span></div>
+          <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: pricedPct + '%'}}"></div></div>
+        </div>
+        <div class="hs-col hs-pictured" title="Has artist artwork">
+          <div class="hs-label"><span>Pictured</span><span class="hs-v">{{{{ picturedPct }}}}%</span></div>
+          <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: picturedPct + '%'}}"></div></div>
+        </div>
+        <div class="hs-col hs-located" title="Has a drive-time ETA">
+          <div class="hs-label"><span>Located</span><span class="hs-v">{{{{ locatedPct }}}}%</span></div>
+          <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: locatedPct + '%'}}"></div></div>
+        </div>
       </div>
 
       <div class="search-row">
@@ -1009,7 +1061,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
               </template>
               <template v-if="show.travel_minutes">
                 <span class="sub-dot">&middot;</span>
-                <span class="travel-chip">{{{{ show.travel_minutes }}}}m<span v-if="leaveBy(show)" class="leave-by">&middot; leave {{{{ leaveBy(show) }}}}</span></span>
+                <span class="travel-chip">🚗 {{{{ show.travel_minutes }}}}m drive<span v-if="leaveBy(show)" class="leave-by">&middot; Leave by {{{{ leaveBy(show) }}}}</span></span>
               </template>
               <template v-if="show.price">
                 <span class="sub-dot">&middot;</span>
@@ -1029,8 +1081,8 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
           </div>
 
           <!-- Score badge — hidden when not scored -->
-          <div class="score-badge-circle" :class="scoreClass(show.score_total)" v-if="show.score_total !== null">
-            <span>{{{{ show.score_total }}}}</span>
+          <div class="score-badge-circle" :class="scoreClass(show.score_total)" :style="{{'--score': show.score_total || 0}}" v-if="show.score_total !== null">
+            <span>{{{{ show.score_total === 0 ? '-' : show.score_total }}}}</span>
           </div>
 
           <!-- Chevron -->
@@ -1043,12 +1095,6 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
         <div class="drawer" v-if="expandedId === show.id" @click.stop>
           <div class="ticket-container">
             <div class="ticket-body">
-              <!-- Art -->
-              <div class="ticket-art-wrap">
-                <img v-if="getShowImage(show)" :src="getShowImage(show)" class="ticket-art" loading="lazy" @error="onImgError($event, show.id)" />
-                <img v-else :src="DEFAULT_SHOW_IMG" class="ticket-art ticket-art-default" loading="lazy" alt="" />
-              </div>
-
               <!-- Details column -->
               <div class="ticket-details">
                 <!-- Supporting artists -->
@@ -1079,7 +1125,12 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
                 </div>
 
                 <!-- Show description -->
-                <div class="ticket-description" v-if="show.description">{{{{ show.description }}}}</div>
+                <div v-if="show.description" style="display:flex;flex-direction:column;gap:0.35rem;">
+                  <div class="ticket-description" :class="{{'desc-clamp': !expandedText[show.id]}}" v-html="formatDescription(show.description)"></div>
+                  <div class="desc-toggle-btn" @click="expandedText[show.id] = !expandedText[show.id]">
+                    {{{{ expandedText[show.id] ? 'Show Less' : 'Read More' }}}}
+                  </div>
+                </div>
 
                 <!-- External links -->
                 <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.15rem;">
@@ -1166,6 +1217,7 @@ createApp({{
   setup() {{
     const shows      = ref(rawShows);
     const expandedId = ref(null);
+    const expandedText = ref({{}});
     const favsOpen   = ref(false);
     const playlistOpen = ref(false);
     const dateRange  = ref('all');
@@ -1200,9 +1252,34 @@ createApp({{
     const scoreClass = (s) => ({{
       hi:   s !== null && s >= 70,
       md:   s !== null && s >= 40 && s < 70,
-      lo:   s !== null && s < 40,
+      lo:   s !== null && s > 0 && s < 40,
+      zero: s === 0,
       none: s === null,
     }});
+
+    // ── Description formatting ─────────────────
+    const formatDescription = (text) => {{
+      if (!text) return '';
+      let formatted = text.replace(/Instructions: For Table Reservations/gi, '\\n\\nInstructions: For Table Reservations');
+      let paras = formatted.split(/\\n\\s*\\n/);
+      let newParas = [];
+      for (let p of paras) {{
+        let sentences = p.match(/[^.!?]+[.!?]+/g);
+        if (sentences && sentences.length > 3 && p.length > 200) {{
+          let chunk = '';
+          for (let i = 0; i < sentences.length; i++) {{
+            chunk += sentences[i] + ' ';
+            if ((i + 1) % 3 === 0 || i === sentences.length - 1) {{
+              newParas.push(chunk.trim());
+              chunk = '';
+            }}
+          }}
+        }} else {{
+          newParas.push(p.trim());
+        }}
+      }}
+      return newParas.filter(Boolean).map(p => "<p>" + p + "</p>").join('');
+    }};
 
     // ── Time helpers ───────────────────────────
     const fmtTime = (t) => {{
@@ -1423,7 +1500,7 @@ createApp({{
       filteredShows, groupedShows,
       allVenueNames, venueGroups, showCountByVenue,
       setDate, resetFilters, favsChipClick, toggleExpand,
-      scoreClass, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG, leaveBy,
+      scoreClass, formatDescription, expandedText, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG, leaveBy,
       artistUrl, lastfmUrl, onImgError, failedImages, matchedCount, matchPct,
       linkedCount, linkedPct, pricedCount, pricedPct, picturedCount, picturedPct,
       locatedCount, locatedPct, headerCompact,
