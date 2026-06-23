@@ -1,5 +1,45 @@
 """Phase 8.4 — cross-source show merge + ticket-link preference."""
-from showcat.outputs.web.adapter import canonical_show_key, merge_shows_by_identity
+from showcat.outputs.web.adapter import (
+    canonical_show_key,
+    core_headliner,
+    merge_shows_by_identity,
+)
+
+
+class TestEdgefieldDedup:
+    """Edgefield amphitheater shows arrive as TM "…Manor" + scraper "Amphitheater"."""
+
+    def test_tm_and_scraper_venue_names_unify(self) -> None:
+        tm = canonical_show_key(
+            "McMenamins Historic Edgefield Manor", "2026-07-12", "Rainbow Kitten Surprise"
+        )
+        scraper = canonical_show_key(
+            "Edgefield Amphitheater", "2026-07-12", "Rainbow Kitten Surprise"
+        )
+        assert tm == scraper
+
+    def test_an_evening_with_prefix_collapses(self) -> None:
+        # "An Evening with CAKE" (scraper) vs "CAKE" (TM)
+        assert core_headliner("An Evening with CAKE") == core_headliner("CAKE")
+
+    def test_support_and_tour_suffix_collapses(self) -> None:
+        # "Bob Moses & Cannons: Afterglow Tour" (scraper) vs "Bob Moses" (TM)
+        assert core_headliner("Bob Moses & Cannons: Afterglow Tour") == core_headliner("Bob Moses")
+
+    def test_edgefield_cake_merges_to_one(self) -> None:
+        tm = {
+            "headliner": "CAKE", "venue": "McMenamins Historic Edgefield Manor",
+            "date": "2026-07-24", "ticket_url": "https://www.ticketmaster.com/event/cake",
+            "source": "ticketmaster", "score_total": None,
+        }
+        scraper = {
+            "headliner": "An Evening with CAKE", "venue": "Edgefield Amphitheater",
+            "date": "2026-07-24", "ticket_url": "https://www.etix.com/ticket/p/1/cake",
+            "source": "edgefield", "score_total": None,
+        }
+        merged = merge_shows_by_identity([tm, scraper])
+        assert len(merged) == 1
+        assert merged[0]["ticket_provider"] == "etix"  # venue-direct link wins
 
 
 def _show(**kw: object) -> dict:

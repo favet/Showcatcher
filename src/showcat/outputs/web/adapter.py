@@ -3,6 +3,7 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -29,9 +30,12 @@ CATCAT_DATA_URI = f"data:image/png;base64,{_CATCAT_B64}"
 # TM returns slightly different venue name strings; normalize before any logic.
 VENUE_CANONICAL: dict[str, str] = {
     "revolution hall - portland": "Revolution Hall",
-    "mcmenamins historic edgefield manor": "McMenamins Edgefield",
-    "the get down music venue": "The Get Down",
+    # Edgefield's amphitheater shows come from Ticketmaster as "…Manor" and from
+    # the venue scraper as "Edgefield Amphitheater" — same place. Unify both so
+    # the cross-source merge collapses the duplicate (TM + venue-direct) rows.
+    "mcmenamins historic edgefield manor": "Edgefield Amphitheater",
     "mcmenamins edgefield amphitheatre": "Edgefield Amphitheater",
+    "the get down music venue": "The Get Down",
 }
 
 # Capacity tier for modal grouping: lower-cased partial match.
@@ -85,11 +89,30 @@ def get_venue_size(name: str) -> str:
     return "mid"
 
 
+_EVENING_PREFIX_RE = re.compile(
+    r"^an?\s+(?:intimate\s+|acoustic\s+|enchanted\s+|special\s+)?evening\s+with\s+", re.I
+)
+
+
+def core_headliner(headliner: str) -> str:
+    """Reduce a headliner to its core artist for duplicate detection.
+
+    Collapses the title decorations that make the same show look different across
+    sources: an "An Evening with X" framing, a co-bill/support act after "&", and
+    a ": Tour Name" subtitle. Used only for the merge key, never for display.
+    Per the domain rule that a music act never plays the same venue twice in one
+    day, this errs toward merging.
+    """
+    h = _EVENING_PREFIX_RE.sub("", headliner)
+    h = re.split(r"\s*[:&]\s*", h, maxsplit=1)[0]
+    return normalize(h)
+
+
 def canonical_show_key(venue: str, date_iso: str, headliner: str) -> tuple[str, str, str]:
     return (
         normalize(normalize_venue_name(canonicalize_venue(venue))),
         date_iso,
-        normalize(headliner),
+        core_headliner(headliner),
     )
 
 
@@ -350,16 +373,18 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
          height always equals the measured --header-h (an animated height would
          drift from --header-h mid-transition and open a variable gap). */
     }}
-    /* Collapsed (scrolled) header: drop everything except the filter chips so
-       the sticky bar is slim. Brand, search and sort are one scroll-up away. */
+    /* Collapsed (scrolled) header keeps the tools you actually use while
+       browsing — search + filters — and drops only the brand/stats and the
+       sort row. A slim, complete toolbar rather than a half-measure. */
     .site-header.compact .brand-row,
-    .site-header.compact .search-row,
+    .site-header.compact .health-stats,
     .site-header.compact .sort-row {{ display: none; }}
-    .site-header.compact .header-inner {{ padding-top: 0.4rem; padding-bottom: 0.15rem; }}
+    .site-header.compact .header-inner {{ padding-top: 0.55rem; padding-bottom: 0.2rem; }}
+    .site-header.compact .search-row {{ margin-bottom: 0.5rem; }}
     .site-header.compact .filter-row {{ padding-bottom: 0.35rem; }}
     .brand-row {{
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 0.75rem;
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 0.6rem;
     }}
     .brand {{ font-size: 1.4rem; font-weight: 800; letter-spacing: -0.03em; }}
     .brand-logo {{
@@ -368,18 +393,21 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }}
-    .brand-right {{ display: flex; align-items: center; gap: 0.5rem; }}
     .brand-meta {{ font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }}
     .brand-meta strong {{ color: var(--text); }}
+    /* Health metrics — a clean row of value+label units (bold coloured number,
+       small muted uppercase label), evenly spaced, no dot separators. */
     .health-stats {{
-      font-family: var(--mono); font-size: 0.65rem; color: var(--muted);
-      display: flex; align-items: center; gap: 0.3rem; margin-top: 0.15rem;
+      display: flex; flex-wrap: wrap; align-items: baseline;
+      gap: 0.15rem 0.9rem; margin-bottom: 0.7rem;
+      font-family: var(--mono); font-size: 0.6rem;
+      letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
     }}
-    .hs-sep {{ opacity: 0.4; }}
-    .hs {{ cursor: default; }}
-    .hs-taste    {{ color: var(--accent); }}
-    .hs-linked   {{ color: #34d399; }}
-    .hs-priced   {{ color: #fbbf24; }}
+    .hs {{ display: inline-flex; align-items: baseline; gap: 0.3rem; cursor: default; }}
+    .hs-v {{ font-size: 0.82rem; font-weight: 700; font-feature-settings: 'tnum'; line-height: 1; }}
+    .hs-taste {{ color: var(--accent); }}
+    .hs-linked {{ color: #34d399; }}
+    .hs-priced {{ color: #fbbf24; }}
     .hs-pictured {{ color: #f472b6; }}
 
     /* Search bar */
@@ -420,44 +448,49 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       color: var(--text);
     }}
 
-    /* Filter chips — wrap onto multiple rows so every filter is reachable on
-       mobile without a hidden horizontal scroll. */
+    /* Filters — one row: a segmented date control + two toggle pills. Stays on
+       a single line; if a very narrow screen can't fit it, it scrolls sideways
+       rather than wrapping to a messy second row. */
     .filter-row {{
-      display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+      display: flex; align-items: center; gap: 0.5rem;
       padding-bottom: 0.6rem;
+      overflow-x: auto; scrollbar-width: none;
     }}
+    .filter-row::-webkit-scrollbar {{ display: none; }}
+
+    /* Segmented date control */
+    .seg {{
+      display: inline-flex; flex-shrink: 0;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 2px;
+    }}
+    .seg-opt {{
+      font-size: 0.78rem; font-weight: 500; white-space: nowrap;
+      padding: 0.34rem 0.7rem; border-radius: 6px;
+      background: transparent; color: var(--muted);
+      transition: color 0.12s, background 0.12s;
+    }}
+    .seg-opt:hover {{ color: var(--text); }}
+    .seg-opt.active {{ background: var(--accent); color: var(--bg); font-weight: 600; }}
+    .seg-opt.active.tonight {{ background: var(--tonight); color: #fff; }}
+
+    /* Toggle pills (Last.fm, Favs) */
     .chip {{
       flex-shrink: 0;
-      font-size: 0.8rem; font-weight: 500;
-      padding: 0.4rem 0.8rem;
-      min-height: 34px;
+      font-size: 0.78rem; font-weight: 500; white-space: nowrap;
+      padding: 0.36rem 0.72rem;
       display: inline-flex; align-items: center; gap: 0.3rem;
-      border: 1px solid var(--border);
-      border-radius: 999px;
+      border: 1px solid var(--border); border-radius: 8px;
       background: transparent; color: var(--muted);
       transition: all 0.12s;
-      white-space: nowrap;
     }}
     .chip:hover {{ border-color: var(--muted); color: var(--text); }}
     .chip.active {{
       background: var(--accent); border-color: var(--accent);
       color: var(--bg); font-weight: 600;
     }}
-    .chip.tonight-active {{
-      background: var(--tonight); border-color: var(--tonight);
-      color: #fff;
-    }}
-    /* The taste (Last.fm) filter gets its own colour so it reads as distinct
-       from the date filters. */
     .chip.taste-active {{
       background: #34d399; border-color: #34d399; color: #04231a; font-weight: 600;
-    }}
-    .chip-divider {{ width: 1px; height: 1.3rem; background: var(--border); flex-shrink: 0; margin: 0 0.15rem; }}
-    /* On wider screens the wrap rarely triggers; keep the divider. On narrow
-       screens it simply wraps with the chips. */
-    @media (max-width: 480px) {{
-      .chip-divider {{ display: none; }}
-      .chip {{ font-size: 0.82rem; padding: 0.45rem 0.85rem; }}
     }}
 
     /* Sort row */
@@ -889,20 +922,15 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     <div class="header-inner">
       <div class="brand-row">
         <div class="brand"><span class="brand-logo">showcat</span></div>
-        <div class="brand-right">
-          <div class="brand-meta">
-            <strong>{{{{ filteredShows.length }}}}</strong> shows &middot; {ts}
-          </div>
-          <div class="health-stats">
-            <span class="hs hs-taste"    title="Last.fm taste match">{{{{ matchPct }}}}% taste</span>
-            <span class="hs-sep">&middot;</span>
-            <span class="hs hs-linked"   title="Spotify artist linked">{{{{ linkedPct }}}}% linked</span>
-            <span class="hs-sep">&middot;</span>
-            <span class="hs hs-priced"   title="Price available">{{{{ pricedPct }}}}% priced</span>
-            <span class="hs-sep">&middot;</span>
-            <span class="hs hs-pictured" title="Artist picture available">{{{{ picturedPct }}}}% pictured</span>
-          </div>
+        <div class="brand-meta">
+          <strong>{{{{ filteredShows.length }}}}</strong> shows &middot; {ts}
         </div>
+      </div>
+      <div class="health-stats">
+        <span class="hs" title="Matched to your Last.fm taste"><b class="hs-v hs-taste">{{{{ matchPct }}}}%</b> taste</span>
+        <span class="hs" title="Linked to a Spotify artist"><b class="hs-v hs-linked">{{{{ linkedPct }}}}%</b> linked</span>
+        <span class="hs" title="Has a ticket price"><b class="hs-v hs-priced">{{{{ pricedPct }}}}%</b> priced</span>
+        <span class="hs" title="Has artist artwork"><b class="hs-v hs-pictured">{{{{ picturedPct }}}}%</b> pictured</span>
       </div>
 
       <div class="search-row">
@@ -911,11 +939,12 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       </div>
 
       <div class="filter-row">
-        <button class="chip" :class="dateRange === 'tonight' ? 'active tonight-active' : ''" @click="setDate('tonight')">Tonight</button>
-        <button class="chip" :class="{{active: dateRange === 'week'}}" @click="setDate('week')">This Week</button>
-        <button class="chip" :class="{{active: dateRange === 'month'}}" @click="setDate('month')">This Month</button>
-        <button class="chip" :class="{{active: dateRange === 'all'}}" @click="setDate('all')">All</button>
-        <div class="chip-divider"></div>
+        <div class="seg">
+          <button class="seg-opt" :class="{{active: dateRange === 'tonight', tonight: dateRange === 'tonight'}}" @click="setDate('tonight')">Tonight</button>
+          <button class="seg-opt" :class="{{active: dateRange === 'week'}}" @click="setDate('week')">Week</button>
+          <button class="seg-opt" :class="{{active: dateRange === 'month'}}" @click="setDate('month')">Month</button>
+          <button class="seg-opt" :class="{{active: dateRange === 'all'}}" @click="setDate('all')">All</button>
+        </div>
         <button class="chip" :class="{{'taste-active': matchedOnly}}" @click="matchedOnly = !matchedOnly" title="Only shows matched to your Last.fm taste">&#9834; Last.fm</button>
         <button class="chip" :class="{{active: favoritesOnly}}" @click="favsChipClick">&#9733; Favs</button>
       </div>
