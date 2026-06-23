@@ -319,6 +319,7 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
             "source": event.source,
             "timestamp": timestamp,
             "time_known": time_known,
+            "bucket": bucket,
         })
 
     merged = merge_shows_by_identity(shows)
@@ -520,6 +521,28 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     /* Card date (shown when ranked by Last.fm, where there are no day headers) */
     .card-date {{ font-family: var(--mono); font-size: 0.66rem; font-weight: 600; color: var(--accent); }}
     .price-chip {{ font-family: var(--mono); font-size: 0.68rem; color: #fbbf24; opacity: 0.9; }}
+    .travel-custom {{ color: #f472b6 !important; }}
+
+    /* Custom-location settings + banner */
+    .settings-eta-actions {{ display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }}
+    .settings-ghost-btn {{
+      padding: 0.5rem 0.8rem; border-radius: 7px; font-size: 0.8rem; cursor: pointer;
+      background: transparent; border: 1px solid var(--border); color: var(--text);
+    }}
+    .settings-ghost-btn:hover {{ border-color: var(--muted); }}
+    .settings-status {{ margin-top: 0.5rem; font-size: 0.78rem; color: var(--muted); }}
+    .settings-status strong {{ color: var(--text); }}
+    .loc-banner {{
+      display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+      background: rgba(244,114,182,0.1); border: 1px solid rgba(244,114,182,0.3);
+      border-radius: 8px; padding: 0.5rem 0.8rem; margin-bottom: 0.8rem;
+      font-size: 0.78rem; color: #f472b6;
+    }}
+    .loc-banner strong {{ color: var(--text); }}
+    .loc-banner button {{
+      background: transparent; border: 1px solid rgba(244,114,182,0.4); color: #f472b6;
+      border-radius: 6px; padding: 0.2rem 0.55rem; font-size: 0.7rem; cursor: pointer;
+    }}
 
     /* Command Strip */
     .command-strip {{ display: flex; flex-direction: column; gap: 0.8rem; padding-bottom: 0.8rem; }}
@@ -1144,6 +1167,10 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
   </header>
 
   <div class="feed">
+    <div v-if="userLoc" class="loc-banner">
+      <span>Drive times from <strong>{{{{ userLoc }}}}</strong></span>
+      <button @click="clearLocation">reset</button>
+    </div>
     <div v-if="filteredShows.length === 0" class="empty">
       No shows match your filters.<br>
       <a @click="resetFilters">Clear filters</a>
@@ -1192,9 +1219,9 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
                 <span class="show-time" :class="{{soon: isSoon(show.timestamp)}}" v-if="show.show_display">{{{{ fmtTime(show.show_display) }}}}</span>
                 <span class="show-time" :class="{{soon: isSoon(show.timestamp)}}" v-else-if="show.doors_display">{{{{ fmtTime(show.doors_display) }}}} <span style="opacity:0.55;font-size:0.62rem">doors</span></span>
               </template>
-              <template v-if="show.travel_minutes">
+              <template v-if="travelMin(show)">
                 <span class="sub-dot">&middot;</span>
-                <span class="travel-chip">{{{{ show.travel_minutes }}}} min</span>
+                <span class="travel-chip" :class="{{'travel-custom': userEta}}">{{{{ travelMin(show) }}}} min</span>
               </template>
               <template v-if="show.price">
                 <span class="sub-dot">&middot;</span>
@@ -1351,14 +1378,21 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       </div>
       <div class="settings-form">
         <div class="settings-group">
-          <label>Last.fm Username</label>
-          <input type="text" v-model="settingsLastfm" placeholder="e.g. your_username" />
+          <label>Your address — drive times will be measured from here</label>
+          <input type="text" v-model="settingsAddress" placeholder="e.g. 123 SE Main St" @keyup.enter="geocodeAddress" />
+          <div class="settings-eta-actions">
+            <button class="settings-save-btn" @click="geocodeAddress">Use this address</button>
+            <button class="settings-ghost-btn" @click="useMyLocation">Use my location</button>
+            <button class="settings-ghost-btn" v-if="userLoc" @click="clearLocation">Reset to default</button>
+          </div>
+          <div class="settings-status" v-if="etaStatus">{{{{ etaStatus }}}}</div>
+          <div class="settings-status" v-else-if="userLoc">Currently: drive times from <strong>{{{{ userLoc }}}}</strong></div>
         </div>
         <div class="settings-group">
-          <label>Home Address (for ETA routing)</label>
-          <input type="text" v-model="settingsAddress" placeholder="e.g. 123 Main St, Portland, OR" />
+          <label>Last.fm username (match shows to your listening)</label>
+          <input type="text" v-model="settingsLastfm" placeholder="e.g. your_username" />
+          <button class="settings-save-btn" @click="saveSettings">Save</button>
         </div>
-        <button class="settings-save-btn" @click="saveSettings">Save Settings</button>
       </div>
     </div>
   </div>
@@ -1544,6 +1578,107 @@ createApp({{
       return fmtClock(show.timestamp - (show.travel_minutes + ARRIVE_BUFFER_MIN) * 60);
     }};
 
+    // ── Custom-address ETA (static per-cell files; no backend) ──
+    // Geocode/locate in the browser → snap to the nearest res-9 cell via
+    // cells.json → fetch that cell's shard → override drive times. The shard
+    // hash mirrors scripts/export_eta_cells.py exactly.
+    const etaManifest = ref(null);
+    const etaCells = ref(null);
+    const userEta = ref(null);   // venueName -> [minutes per bucket], for the chosen cell
+    const userLoc = ref('');
+    const etaStatus = ref('');
+    try {{
+      const c = localStorage.getItem('sc-eta'); const l = localStorage.getItem('sc-loc');
+      if (c && l) {{ userEta.value = JSON.parse(c); userLoc.value = l; }}
+    }} catch (e) {{}}
+
+    const _etaShard = (cellId) => {{
+      let h = 0;
+      for (let i = 0; i < cellId.length; i++) h = (Math.imul(h, 31) + cellId.charCodeAt(i)) >>> 0;
+      return h % (etaManifest.value ? etaManifest.value.shards : 128);
+    }};
+    const _haversine = (la, lo, lb, lc) => {{
+      const R = 6371, p = Math.PI / 180;
+      const dla = (lb - la) * p, dlo = (lc - lo) * p;
+      const a = Math.sin(dla/2)**2 + Math.cos(la*p)*Math.cos(lb*p)*Math.sin(dlo/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }};
+    const _loadEtaMeta = async () => {{
+      if (etaCells.value) return true;
+      try {{
+        etaManifest.value = await (await fetch('eta/manifest.json')).json();
+        etaCells.value = await (await fetch('eta/cells.json')).json();
+        return true;
+      }} catch (e) {{ return false; }}
+    }};
+    const applyLocation = async (lat, lon, label) => {{
+      etaStatus.value = 'Looking up drive times…';
+      if (!(await _loadEtaMeta())) {{ etaStatus.value = 'ETA data unavailable.'; return; }}
+      let best = null, bd = 1e9;
+      for (const row of etaCells.value) {{
+        const d = _haversine(lat, lon, row[1], row[2]);
+        if (d < bd) {{ bd = d; best = row[0]; }}
+      }}
+      if (!best || bd > 8) {{ etaStatus.value = 'That address looks outside the Portland metro coverage.'; return; }}
+      try {{
+        const shard = await (await fetch('eta/s' + _etaShard(best) + '.json')).json();
+        const cell = shard[best];
+        if (!cell) {{ etaStatus.value = 'No drive times for that spot.'; return; }}
+        userEta.value = cell; userLoc.value = label;
+        localStorage.setItem('sc-eta', JSON.stringify(cell));
+        localStorage.setItem('sc-loc', label);
+        etaStatus.value = 'Drive times now from: ' + label;
+        settingsOpen.value = false;
+      }} catch (e) {{ etaStatus.value = 'Lookup failed.'; }}
+    }};
+    const geocodeAddress = async () => {{
+      const q = settingsAddress.value.trim();
+      if (!q) {{ etaStatus.value = 'Enter an address first.'; return; }}
+      etaStatus.value = 'Finding address…';
+      try {{
+        const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q + ', Portland, Oregon');
+        const j = await (await fetch(url, {{ headers: {{ 'Accept': 'application/json' }} }})).json();
+        if (!j.length) {{ etaStatus.value = 'Address not found — try adding the street + city.'; return; }}
+        await applyLocation(parseFloat(j[0].lat), parseFloat(j[0].lon), q);
+      }} catch (e) {{ etaStatus.value = 'Geocoding failed (network?).'; }}
+    }};
+    const useMyLocation = () => {{
+      if (!navigator.geolocation) {{ etaStatus.value = 'Geolocation not supported.'; return; }}
+      etaStatus.value = 'Getting your location…';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => applyLocation(pos.coords.latitude, pos.coords.longitude, 'My location'),
+        () => {{ etaStatus.value = 'Location permission denied.'; }}
+      );
+    }};
+    const clearLocation = () => {{
+      userEta.value = null; userLoc.value = '';
+      localStorage.removeItem('sc-eta'); localStorage.removeItem('sc-loc');
+      etaStatus.value = 'Reset to default home (N Portland).';
+    }};
+    const _normVenue = (n) => {{
+      n = (n || '').toLowerCase();
+      for (const w of ['music venue','theater','theatre','- portland','mcmenamins historic','manor','and hotel','at the crystal','saloon']) n = n.split(w).join('');
+      return n.replace(/'/g, '').trim();
+    }};
+    // Effective drive time for a show: the user's address if set, else home.
+    const travelMin = (show) => {{
+      if (userEta.value) {{
+        const ev = _normVenue(show.venue);
+        for (const k in userEta.value) {{
+          const nk = _normVenue(k);
+          if (nk === ev || nk.includes(ev) || ev.includes(nk)) {{
+            const buckets = etaManifest.value ? etaManifest.value.buckets
+                          : ['pm_peak','evening','late_night','weekend_day','off_peak'];
+            const bi = buckets.indexOf(show.bucket);
+            const m = userEta.value[k][bi >= 0 ? bi : 0];
+            if (m != null) return m;
+            break;
+          }}
+        }}
+      }}
+      return show.travel_minutes;
+    }};
+
     const DEFAULT_SHOW_IMG = "{CATCAT_DATA_URI}";
     const getShowImage = (show) => {{
       if (failedImages.value.has(show.id)) return null;
@@ -1592,7 +1727,7 @@ createApp({{
 
         // Quick filters
         if (maxCost.value < 1000) {{ const pn = priceNum(s.price); if (pn === null || pn > maxCost.value) return false; }}
-        if (maxDrive.value < 1000 && (s.travel_minutes == null || s.travel_minutes > maxDrive.value)) return false;
+        if (maxDrive.value < 1000) {{ const tm = travelMin(s); if (tm == null || tm > maxDrive.value) return false; }}
         if (selectedGenres.value.length > 0 && (!s.genres || !selectedGenres.value.some(g => s.genres.includes(g)))) return false;
         
         if (matchedOnly.value   && s.score_total === null)                    return false;
@@ -1768,6 +1903,7 @@ createApp({{
       allVenueNames, venueGroups, showCountByVenue,
       minScore, maxCost, maxDrive, selectedGenres, topGenres, toggleGenre, resetFilters, favsChipClick, toggleExpand,
       scoreClass, displayScore, formatDescription, expandedText, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG, leaveBy,
+      travelMin, userEta, userLoc, etaStatus, geocodeAddress, useMyLocation, clearLocation,
       artistUrl, lastfmUrl, onImgError, failedImages, matchedCount, matchPct,
       linkedCount, linkedPct, pricedCount, pricedPct, picturedCount, picturedPct,
         locatedCount, locatedPct, headerCompact,
