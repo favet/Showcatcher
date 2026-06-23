@@ -14,6 +14,46 @@ from sqlalchemy.orm import Session
 from showcat.adapters.spotify.client import SpotifyError
 from showcat.ingest.events import spotify_search as ss
 from showcat.ingest.events.models import Event
+from showcat.ingest.events.spotify_search import accept_match, search_name
+
+
+class TestSearchName:
+    def test_strips_trailing_support_act(self) -> None:
+        assert search_name("OATHBOUND with Hangfire") == "OATHBOUND"
+        assert search_name("FLYING WHAMMY with Side Note") == "FLYING WHAMMY"
+
+    def test_strips_w_slash_and_feat(self) -> None:
+        assert search_name("Band Name w/ Opener") == "Band Name"
+        assert search_name("Band Name feat. Guest") == "Band Name"
+        assert search_name("Band Name featuring Guest") == "Band Name"
+
+    def test_keeps_artist_after_an_evening_with(self) -> None:
+        # "with" here precedes the artist, not a support act.
+        assert search_name("An Evening with Mt Joy") == "Mt Joy"
+        assert search_name("An Intimate Evening with Brandi Carlile") == "Brandi Carlile"
+
+    def test_plain_name_unchanged(self) -> None:
+        assert search_name("Kurt Vile And The Violators") == "Kurt Vile And The Violators"
+        assert search_name("Sir Richard Bishop") == "Sir Richard Bishop"
+
+
+class TestAcceptMatch:
+    def test_similar_names_accepted(self) -> None:
+        assert accept_match("Mt Joy", "Mt. Joy")
+
+    def test_contained_artist_name_accepted(self) -> None:
+        # Backing band in the title; Spotify returns the bare artist.
+        assert accept_match("Kurt Vile And The Violators", "Kurt Vile")
+
+    def test_single_token_coincidence_rejected(self) -> None:
+        # A lone common word must not match by containment.
+        assert not accept_match("I'm Not So Sure Band", "Sure")
+
+    def test_unrelated_rejected(self) -> None:
+        assert not accept_match("Good Flying Birds", "The Beatles")
+
+    def test_empty_result_rejected(self) -> None:
+        assert not accept_match("Anything", "")
 
 
 def _seed_event(session: Session, source_id: str, headliner: str) -> Event:
@@ -62,6 +102,21 @@ def test_clean_miss_is_stored_as_none(db_session: Session) -> None:
     assert updated == 1
     ev = db_session.execute(select(Event).where(Event.source_id == "E1")).scalar_one()
     assert ev.event_spotify_url == "none"
+
+
+def test_contained_artist_stores_url(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A backing-band title still links when Spotify returns the bare artist."""
+    monkeypatch.setattr(ss, "REQUEST_DELAY_S", 0.0)
+    _seed_event(db_session, "K1", "Kurt Vile And The Violators")
+    db_session.flush()
+
+    result = {"name": "Kurt Vile", "external_urls": {"spotify": "https://open.spotify.com/artist/kv"}}
+    stage = ss.EventSpotifySearchStage(client=_FakeClient(result=result))
+    updated = stage._run(db_session)
+
+    assert updated == 1
+    ev = db_session.execute(select(Event).where(Event.source_id == "K1")).scalar_one()
+    assert ev.event_spotify_url == "https://open.spotify.com/artist/kv"
 
 
 def test_per_run_cap_limits_batch(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:

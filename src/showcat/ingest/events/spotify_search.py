@@ -10,6 +10,7 @@ NOT stored so the event is re-tried on the next pipeline run.
 """
 import logging
 import os
+import re
 import time
 from datetime import date
 from typing import Any
@@ -21,12 +22,48 @@ from showcat.adapters.spotify.auth import SpotifyAuth, SpotifyToken
 from showcat.adapters.spotify.client import SpotifyClient, SpotifyError
 from showcat.core.base import BaseStage
 from showcat.ingest.events.models import Event
-from showcat.resolve.matcher import similarity
+from showcat.resolve.matcher import normalize, similarity
 from showcat.resolve.models import EventMatch
 
 logger = logging.getLogger(__name__)
 
 SIMILARITY_THRESHOLD = 0.55
+
+# "An (intimate/acoustic) Evening with <ARTIST>" — the artist is *after* "with".
+_EVENING_PREFIX = re.compile(
+    r"^an?\s+(?:intimate\s+|acoustic\s+|enchanted\s+|special\s+)?evening\s+with\s+", re.I
+)
+# "<HEADLINER> with/w//feat/featuring <OPENER>" — the artist is *before* it.
+_TRAILING_SUPPORT = re.compile(r"\s+(?:with|w/|feat\.?|featuring)\s+.+$", re.I)
+
+
+def search_name(headliner: str) -> str:
+    """Reduce a show title to the most likely single artist to search Spotify for.
+
+    Strips a trailing support act ("X with Y" -> "X") but keeps the artist when
+    the title is an "An Evening with X" framing ("An Evening with X" -> "X").
+    """
+    m = _EVENING_PREFIX.search(headliner)
+    cleaned = headliner[m.end():] if m else _TRAILING_SUPPORT.sub("", headliner)
+    return cleaned.strip() or headliner.strip()
+
+
+def accept_match(query: str, result_name: str) -> bool:
+    """Whether a Spotify artist result is a confident match for the search query.
+
+    Accept when either the names are similar enough, OR the full Spotify artist
+    name is contained (token-subset) in the query — the latter rescues real
+    artists carrying a backing band in the title ("Kurt Vile And The Violators"
+    -> Spotify "Kurt Vile"). The >=2-token floor avoids a single common word
+    ("Sure", "Ali") matching by coincidence.
+    """
+    if not result_name:
+        return False
+    if similarity(query, result_name) >= SIMILARITY_THRESHOLD:
+        return True
+    q_tokens = set(normalize(query).split())
+    r_tokens = set(normalize(result_name).split())
+    return len(r_tokens) >= 2 and r_tokens <= q_tokens
 
 # Spotify rate-limits on a rolling ~30-second window; sustained over-rate triggers
 # a *fixed multi-hour cooldown* (observed Retry-After ~10h), not a short backoff —
@@ -93,8 +130,9 @@ class EventSpotifySearchStage(BaseStage):
             result = None
             had_error = False
 
+            query = search_name(event.headliner)
             try:
-                result = client.search_artist(event.headliner)
+                result = client.search_artist(query)
             except SpotifyError as e:
                 if e.status_code == 429:
                     # Spotify's 429 is a fixed, often multi-hour cooldown — retrying
@@ -126,21 +164,20 @@ class EventSpotifySearchStage(BaseStage):
                 continue
 
             result_name: str = result.get("name", "")
-            sim = similarity(event.headliner, result_name)
-            if sim >= SIMILARITY_THRESHOLD:
+            if accept_match(query, result_name):
                 url = result.get("external_urls", {}).get("spotify") or "none"
                 event.event_spotify_url = url
                 logger.info(
                     "Event Spotify URL found",
-                    extra={"headliner": event.headliner, "spotify_name": result_name,
-                           "sim": round(sim, 3), "url": url},
+                    extra={"headliner": event.headliner, "query": query,
+                           "spotify_name": result_name, "url": url},
                 )
             else:
                 event.event_spotify_url = "none"
                 logger.debug(
                     "Spotify name mismatch",
-                    extra={"headliner": event.headliner, "spotify_name": result_name,
-                           "sim": round(sim, 3)},
+                    extra={"headliner": event.headliner, "query": query,
+                           "spotify_name": result_name},
                 )
 
             session.add(event)
