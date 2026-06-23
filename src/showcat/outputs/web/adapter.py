@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 
 from showcat.adapters.sources.title_parser import is_non_show
 from showcat.adapters.tickets.providers import _TM_FAMILY, best_link, classify_provider, provider_label
-from showcat.core.travel import get_travel_times, lookup_travel, normalize_venue_name
+from showcat.core.travel import (
+    departure_bucket,
+    get_eta_travel_times,
+    get_travel_times,
+    lookup_travel,
+    normalize_venue_name,
+)
 from showcat.ingest.events.models import Event
 from showcat.ingest.history.models import Artist, ArtistTag
 from showcat.outputs.base import BaseOutputAdapter
@@ -199,6 +205,8 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
     )
 
     travel_times = get_travel_times()
+    # Time-of-day drive times (one map per traffic bucket); falls back to base.
+    eta_by_bucket = get_eta_travel_times()
 
     artist_ids = [row[3].id for row in rows if row[3] is not None]
     tags_by_artist: dict[int, list[str]] = {}
@@ -233,8 +241,6 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
 
         venue = canonicalize_venue(event.venue)
 
-        travel_info = lookup_travel(venue, travel_times)
-
         genres = tags_by_artist.get(artist.id, []) if artist else []
 
         # Time fallback logic:
@@ -253,6 +259,11 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
 
         doors_display = fmt_time(doors_time) if doors_time else None
         show_display = fmt_time(show_time) if show_time else None
+
+        # Drive time for THIS show's traffic bucket (time-of-day), from eta_matrix
+        # with a base-time fallback baked into each bucket map.
+        bucket = departure_bucket(event.date, show_time)
+        travel_info = lookup_travel(venue, eta_by_bucket.get(bucket, travel_times))
 
         # Untimed shows default to 8pm (a typical showtime), NOT midnight — a
         # midnight default made today's untimed shows compute a "past" timestamp,
@@ -401,18 +412,14 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       position: relative; margin-left: auto;
     }}
     .tool-btn {{
-      font-size: 1.15rem; cursor: pointer; transition: all 0.2s ease;
-      opacity: 0.6; filter: grayscale(100%);
-      user-select: none;
+      font-family: var(--mono); font-size: 0.66rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer;
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      transition: color 0.15s, border-color 0.15s;
     }}
-    .tool-btn:hover, .tool-btn.active {{
-      opacity: 1; filter: grayscale(0%);
-    }}
-    .vial-btn:hover, .vial-btn.active {{
-      text-shadow: 0 0 12px var(--accent); color: var(--accent);
-      transform: scale(1.1);
-    }}
-    .settings-btn:hover {{ transform: rotate(45deg); }}
+    .tool-btn:hover, .tool-btn.active {{ color: var(--text); border-color: var(--muted); }}
+    .vial-btn.active {{ color: var(--accent); border-color: var(--accent); }}
     
     .vial-popover {{
       position: absolute; top: 100%; right: 0; margin-top: 0.65rem;
@@ -1066,9 +1073,9 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
           <strong>{{{{ filteredShows.length }}}}</strong> shows &middot; {ts}
         </div>
         <div class="header-tools">
-          <div class="tool-btn vial-btn" @click="vialOpen = !vialOpen" :class="{{active: vialOpen}}" title="Health Metrics">🧪</div>
-          <div class="tool-btn settings-btn" @click="settingsOpen = true" title="Settings">⚙️</div>
-          
+          <button class="tool-btn vial-btn" @click="vialOpen = !vialOpen" :class="{{active: vialOpen}}" aria-label="Data coverage stats" title="Data coverage">Stats</button>
+          <button class="tool-btn settings-btn" @click="settingsOpen = true" aria-label="Settings" title="Settings">Settings</button>
+
                     <div class="vial-popover" v-if="vialOpen" @click.stop>
             <div class="health-stats">
         <div class="hs-col hs-taste" title="Matched to your Last.fm taste">
@@ -1207,7 +1214,8 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
           </div>
 
           <!-- Score badge — hidden when not scored -->
-          <div class="score-badge-circle" :class="scoreClass(displayScore(show.score_total))" :style="{{'--score': displayScore(show.score_total) || 0}}" v-if="show.score_total !== null">
+          <div class="score-badge-circle" :class="scoreClass(displayScore(show.score_total))" :style="{{'--score': displayScore(show.score_total) || 0}}" v-if="show.score_total !== null"
+               title="Last.fm match — how closely this lines up with your listening (0–100)">
             <span>{{{{ displayScore(show.score_total) === 0 ? '-' : displayScore(show.score_total) }}}}</span>
           </div>
 
@@ -1358,8 +1366,8 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
   <!-- Scraping Progress Toast -->
   <div class="scraping-toast" :class="{{visible: scrapingActive}}">
     <div class="toast-title">
-      <span v-if="scrapingProgress < 100">🧪 Syncing Last.fm Data...</span>
-      <span v-else>✨ Sync Complete</span>
+      <span v-if="scrapingProgress < 100">Updating your taste matches…</span>
+      <span v-else>Taste matches updated</span>
     </div>
     <div class="toast-bar-bg">
       <div class="toast-bar-fill" :style="{{width: scrapingProgress + '%'}}"></div>
@@ -1417,7 +1425,7 @@ createApp({{
       }});
       return Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 12)
+        .slice(0, 8)
         .map(x => x[0]);
     }});
 

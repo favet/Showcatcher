@@ -79,6 +79,67 @@ def get_travel_times() -> dict[str, dict[str, Any]]:
     return times
 
 
+_BUCKETS = ("pm_peak", "evening", "late_night", "weekend_day", "off_peak")
+
+
+def departure_bucket(event_date: Any, show_time: Any) -> str:
+    """Map a show's local date/time to a traffic bucket (mirrors pdx_travel).
+
+    Untimed shows assume a typical 8pm start. Buckets:
+      late_night  23:00–06:00 any day
+      weekend_day Sat/Sun 10:00–19:00
+      pm_peak     Mon–Fri 15:00–19:00
+      evening     Mon–Fri 19:00–23:00
+      off_peak    everything else
+    """
+    hour = show_time.hour if show_time is not None else 20
+    wd = event_date.weekday()  # 0=Mon
+    if hour >= 23 or hour < 6:
+        return "late_night"
+    if wd >= 5 and 10 <= hour < 19:
+        return "weekend_day"
+    if wd < 5 and 15 <= hour < 19:
+        return "pm_peak"
+    if wd < 5 and 19 <= hour < 23:
+        return "evening"
+    return "off_peak"
+
+
+def get_eta_travel_times() -> dict[str, dict[str, dict[str, Any]]]:
+    """Return {bucket_slug: {normalized_venue: {minutes, miles}}} from eta_matrix.
+
+    Time-of-day drive times from the home cell, one map per bucket. Falls back to
+    the base (free-flow) times for any venue/bucket the eta_matrix doesn't cover,
+    so callers always get a value. Empty if eta_matrix isn't populated.
+    """
+    base = get_travel_times()
+    by_bucket: dict[str, dict[str, dict[str, Any]]] = {b: dict(base) for b in _BUCKETS}
+    if not os.path.exists(SQLITE_DB_PATH):
+        return by_bucket
+    try:
+        conn = sqlite3.connect(SQLITE_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT v.name AS name, b.label AS bucket, e.eta_seconds AS secs "
+            "FROM eta_matrix e "
+            "JOIN venues v ON v.venue_id = e.venue_id "
+            "JOIN buckets b ON b.bucket_id = e.bucket_id "
+            "WHERE e.cell_id = ?",
+            (HOME_CELL_ID,),
+        ).fetchall()
+        conn.close()
+        for r in rows:
+            if r["bucket"] not in by_bucket:
+                continue
+            by_bucket[r["bucket"]][normalize_venue_name(r["name"])] = {
+                "minutes": round(r["secs"] / 60),
+                "miles": None,
+            }
+    except Exception as e:
+        logger.error("Error querying eta_matrix: %s", e)
+    return by_bucket
+
+
 def lookup_travel(venue_name: str, travel_times: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     """Find the travel-time entry for a venue name using substring matching."""
     norm = normalize_venue_name(venue_name)
