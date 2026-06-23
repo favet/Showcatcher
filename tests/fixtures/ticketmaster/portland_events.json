@@ -21,8 +21,12 @@
             {
               "name": "Crystal Ballroom",
               "id": "KovZ917A9v!",
-              "city": {"name": "Portland"},
-              "state": {"stateCode": "OR"}
+              "city": {
+                "name": "Portland"
+              },
+              "state": {
+                "stateCode": "OR"
+              }
             }
           ],
           "attractions": [
@@ -35,7 +39,8 @@
               "name": "Built to Spill"
             }
           ]
-        }
+        },
+        "info": "An evening with Modest Mouse. All ages welcome."
       },
       {
         "id": "G5vYZpkYkIiZ8",
@@ -57,8 +62,12 @@
             {
               "name": "Hawthorne Theatre",
               "id": "KovZpZAEdkaA",
-              "city": {"name": "Portland"},
-              "state": {"stateCode": "OR"}
+              "city": {
+                "name": "Portland"
+              },
+              "state": {
+                "stateCode": "OR"
+              }
             }
           ],
           "attractions": [
@@ -67,7 +76,8 @@
               "name": "Death Cab for Cutie"
             }
           ]
-        }
+        },
+        "pleaseNote": "Doors at 7pm. No re-entry."
       }
     ]
   },

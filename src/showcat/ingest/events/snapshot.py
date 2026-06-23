@@ -19,6 +19,12 @@ from sqlalchemy.orm import Session
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.tickets.providers import classify_provider
 from showcat.core.base import BaseStage
+from showcat.adapters.sources.title_parser import (
+    is_non_show,
+    normalize_title,
+    split_multi_artist_comma,
+    split_multi_artist_plus,
+)
 from showcat.ingest.events.models import Event, EventChange, EventSnapshot
 
 logger = logging.getLogger(__name__)
@@ -36,6 +42,9 @@ def _raw_event_to_dict(event: RawEvent) -> dict[str, Any]:
         "venue": event.venue,
         "on_sale_date": event.on_sale_date.isoformat() if event.on_sale_date else None,
         "ticket_url": event.ticket_url,
+        "price": event.price,
+        "image_url": event.image_url,
+        "description": event.description,
     }
 
 
@@ -85,6 +94,22 @@ class EventSnapshotStage(BaseStage):
         changes_recorded = 0
 
         for raw_event in current_events:
+            # Normalize: entities, whitespace, status prefix, age/tour suffixes, w/ opener
+            clean_headliner, w_openers, _status = normalize_title(
+                raw_event.headliner,
+                existing_openers=list(raw_event.openers),
+            )
+            # Split multi-artist bills packed into the title
+            clean_headliner, plus_openers = split_multi_artist_plus(
+                clean_headliner, existing_openers=w_openers
+            )
+            clean_headliner, all_openers = split_multi_artist_comma(
+                clean_headliner, existing_openers=plus_openers
+            )
+
+            if is_non_show(clean_headliner):
+                continue
+
             ticket_provider = classify_provider(raw_event.ticket_url)
             # Upsert the event row
             stmt = (
@@ -92,8 +117,8 @@ class EventSnapshotStage(BaseStage):
                 .values(
                     source=raw_event.source,
                     source_id=raw_event.source_id,
-                    headliner=raw_event.headliner,
-                    openers=raw_event.openers,
+                    headliner=clean_headliner,
+                    openers=all_openers,
                     date=raw_event.event_date,
                     doors_time=raw_event.doors_time,
                     show_time=raw_event.show_time,
@@ -101,6 +126,10 @@ class EventSnapshotStage(BaseStage):
                     on_sale_date=raw_event.on_sale_date,
                     ticket_url=raw_event.ticket_url,
                     ticket_provider=ticket_provider,
+                    price=raw_event.price,
+                    image_url=raw_event.image_url,
+                    sold_out=raw_event.sold_out,
+                    description=raw_event.description,
                     first_seen=now,
                     last_seen=now,
                 )
@@ -108,11 +137,18 @@ class EventSnapshotStage(BaseStage):
                     constraint="uq_events_source_id",
                     set_={
                         "last_seen": now,
-                        "openers": raw_event.openers,
+                        "headliner": clean_headliner,
+                        "openers": all_openers,
                         "doors_time": raw_event.doors_time,
                         "show_time": raw_event.show_time,
                         "ticket_url": raw_event.ticket_url,
                         "ticket_provider": ticket_provider,
+                        # Only overwrite price/image/description if the new scrape has them
+                        # (prevents erasure when the source stops returning them).
+                        **(({"price": raw_event.price}) if raw_event.price else {}),
+                        **(({"image_url": raw_event.image_url}) if raw_event.image_url else {}),
+                        **(({"description": raw_event.description}) if raw_event.description else {}),
+                        "sold_out": raw_event.sold_out,
                     },
                 )
             )
@@ -126,7 +162,7 @@ class EventSnapshotStage(BaseStage):
                     event_source_id=raw_event.source_id,
                     change_type="new_event",
                     change_detail={
-                            "headliner": raw_event.headliner,
+                            "headliner": clean_headliner,
                             "date": raw_event.event_date.isoformat(),
                         },
                     detected_at=now,
@@ -152,7 +188,7 @@ class EventSnapshotStage(BaseStage):
             else:
                 # Check for added openers
                 prev_openers = set(prev.get("openers", []))
-                curr_openers = set(raw_event.openers)
+                curr_openers = set(all_openers)
                 new_openers = curr_openers - prev_openers
                 for opener in new_openers:
                     result = session.execute(

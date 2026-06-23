@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,19 @@ class LaurelThirstAdapter(BaseSourceAdapter):
                 import html as pyhtml
                 headliner = pyhtml.unescape(title).strip()
                 
+                image_url = data.get("image")
+                offers = data.get("offers", {})
+                price_str = None
+                if isinstance(offers, dict):
+                    val = offers.get("price") or offers.get("lowPrice")
+                    if val is not None:
+                        price_str = str(val).strip()
+                elif isinstance(offers, list) and len(offers) > 0:
+                    val = offers[0].get("price")
+                    if val is not None:
+                        price_str = str(val).strip()
+
+                headliner, _, status = normalize_title(headliner)
                 events.append(
                     RawEvent(
                         source=self.source_name,
@@ -86,6 +100,9 @@ class LaurelThirstAdapter(BaseSourceAdapter):
                         show_time=start_time_val,
                         venue="LaurelThirst Public House",
                         ticket_url=event_url,
+                        price=price_str or "Free",
+                        image_url=image_url or None,
+                        sold_out=(status == "sold_out"),
                     )
                 )
             except Exception as e:

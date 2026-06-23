@@ -1,4 +1,4 @@
-﻿"""Spotify Web API client — the narrow surviving surface we depend on.
+"""Spotify Web API client — the narrow surviving surface we depend on.
 
 Only three operations are used: `/search` (resolve a track name to a URI),
 create a playlist, and replace a playlist's items. Track *selection* stays on
@@ -35,7 +35,20 @@ class Resolution:
 
 
 class SpotifyError(Exception):
-    """Raised on a non-success Spotify API response."""
+    """Raised on a non-success Spotify API response.
+
+    Carries the HTTP ``status_code`` and, for 429 responses, the server's
+    ``retry_after`` (seconds) so callers can back off intelligently instead of
+    parsing the message string. Spotify's 429 cooldown is a fixed countdown —
+    a large ``retry_after`` (minutes/hours) means hammering won't help.
+    """
+
+    def __init__(
+        self, message: str, status_code: int | None = None, retry_after: int | None = None
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 class SpotifyClient:
@@ -50,12 +63,26 @@ class SpotifyClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.access_token}"}
 
+    @staticmethod
+    def _retry_after(resp: requests.Response) -> int | None:
+        raw = resp.headers.get("Retry-After")
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         resp = self._session.get(
             f"{SPOTIFY_API_BASE}{path}", headers=self._headers(), params=params, timeout=30
         )
         if resp.status_code != 200:
-            raise SpotifyError(f"GET {path} failed ({resp.status_code}): {resp.text}")
+            raise SpotifyError(
+                f"GET {path} failed ({resp.status_code}): {resp.text}",
+                status_code=resp.status_code,
+                retry_after=self._retry_after(resp),
+            )
         data: dict[str, Any] = resp.json()
         return data
 
@@ -146,3 +173,30 @@ class SpotifyClient:
         /playlists/{id}/tracks endpoint is gone).
         """
         self._put(f"/playlists/{playlist_id}/items", {"uris": uris})
+
+    def search_artist(self, artist_name: str) -> dict[str, Any] | None:
+        """Search for an artist by name. Returns the first matching artist object or None.
+
+        Uses plain-text search (not artist: field filter) for better recall on
+        smaller/indie artists. Raises SpotifyError on API failures — callers must
+        handle rate-limits themselves so transient failures aren't stored as
+        permanent 'not found'.
+        """
+        data = self._get(
+            "/search",
+            {"q": artist_name, "type": "artist", "limit": 1},
+        )
+        items = data.get("artists", {}).get("items", [])
+        return items[0] if items else None
+
+    def get_artist_top_tracks(self, artist_id: str, market: str = "US") -> list[dict[str, Any]]:
+        """Get top tracks for an artist. Returns list of track objects."""
+        try:
+            data = self._get(
+                f"/artists/{artist_id}/top-tracks",
+                {"market": market},
+            )
+            return data.get("tracks", [])
+        except Exception as e:
+            logger.warning(f"Failed to get Spotify top tracks for artist ID '{artist_id}': {e}")
+        return []

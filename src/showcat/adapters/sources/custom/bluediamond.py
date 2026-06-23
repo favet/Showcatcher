@@ -5,6 +5,7 @@ from typing import Any
 import requests
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,19 @@ class BlueDiamondAdapter(BaseSourceAdapter):
 
                 url = item.get("url", "")
                 
+                import re as _re, html as _html
+                cost = item.get("cost") or item.get("price")
+                if not cost:
+                    desc_text = _re.sub(r'<[^>]+>', ' ', item.get("description", ""))
+                    _m = _re.search(r'\$\d+(?:\.\d{2})?', desc_text)
+                    cost = _m.group(0) if _m else None
+                image_info = item.get("image")
+                image_url = None
+                if isinstance(image_info, dict):
+                    image_url = image_info.get("url")
+                elif isinstance(image_info, str):
+                    image_url = image_info
+
                 events.append(
                     RawEvent(
                         source=self.source_name,
@@ -74,6 +88,8 @@ class BlueDiamondAdapter(BaseSourceAdapter):
                         show_time=start_time_val,
                         venue="Blue Diamond",
                         ticket_url=url,
+                        price=str(cost) if cost else None,
+                        image_url=image_url,
                     )
                 )
             except Exception as e:

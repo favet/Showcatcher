@@ -221,9 +221,66 @@ A unit of work is done only when **all** of these are true:
 - [x] ≥1 venue-direct scraper yields non-TM (Etix) links. *(Proven by `tests/test_venue_adapters.py` — Aladdin, 6 Etix events)*
 - [x] Same show across sources merges to one card preferring the non-TM link. *(Proven by `tests/test_web_merge.py`)*
 - [x] Rendered page shows the provider badge. *(Proven by `tests/test_web_render.py`)*
-- [ ] Live site shows non-TM providers on covered venues' shows. *(Pending 8.6 repopulate + deploy)*
+- [x] Live site shows non-TM providers on covered venues' shows. *(Repopulated + deployed 2026-06-22; showcat.favet.net serves the rebuilt page, HTTP 200.)*
 
 > **Scope note:** 8.3 venue coverage is intentionally incremental (zero core edits per new adapter). Aladdin shipped; True West cluster (Mississippi Studios / Polaris / Revolution Hall — shared `events-feed` calendar markup), Hawthorne, and JS-rendered Wonder / Doug Fir (need their JSON endpoints) are tracked follow-on in `VENUES.md`.
+
+---
+
+## Phase 9 — Venue Scraper Expansion
+
+**Goal:** Flesh out every Portland venue that was outputting 0 events by adding direct scrapers, so they appear in the site with event-specific ticket links. Track each venue's completion status here; sessions may hand off mid-phase.
+
+### Venues — buildable scrapers
+
+| Venue | Platform | Status | Notes |
+|---|---|---|---|
+| Alberta Rose Theatre | RHP (list view) | ✅ DONE 2026-06-21 | `AlbertaRoseAdapter` in `rhp.py`, 26 tests pass |
+| Holocene | RHP (grid/`rhpSingleEvent` view) | ✅ DONE 2026-06-21 | `HoloceneAdapter` in `rhp.py`, 26 tests pass |
+| The Get Down | Webflow + JSON-LD + Tixr | ✅ DONE 2026-06-21 | `GetDownAdapter` in `getdown.py`, 26 tests pass |
+| The Showdown | TicketWeb WordPress plugin | ✅ DONE 2026-06-21 | `ShowdownAdapter` in `showdown.py`, 26 tests pass |
+| Alberta Street Pub | Squarespace event listing | ✅ DONE 2026-06-22 | `AlbertaStreetPubAdapter` in `albertastreetpub.py`, fixture + tests pass |
+| Kelly's Olympian | WordPress Tribe Events REST API | ✅ DONE 2026-06-22 | `KellysOlympianAdapter` in `kellys_olympian.py`, fixture + tests pass |
+
+### Venues — deferred (JS-rendered, cannot scrape with BeautifulSoup)
+
+| Venue | Platform | Blocker |
+|---|---|---|
+| Alberta Abbey | Squarespace JS calendar | Full page is a JS bundle; no server-rendered event HTML |
+| The Coffin Club | VenuePilot hash SPA | `window.venuepilotSettings = { accountIds: [3434], routing: 'hash' }` — all events loaded client-side |
+| TOC Portland | AFTON ticketing | AFTON renders via JS; static HTML has no event data |
+| Twilight Cafe | HoldMyTicket | HoldMyTicket iframe; no server-rendered calendar |
+| 45 East | Tixr | Verified few events; low priority |
+
+To unblock the JS-rendered venues in a future session: use a headless browser (Playwright/Selenium), or find a JSON API endpoint (check XHR requests in DevTools), or add a Puppeteer-based fetch step in the pipeline.
+
+### Exit Gate 9 (provable)
+- [x] All buildable scrapers yield ≥1 event from their committed fixture. *(Proven by `tests/test_venue_adapters.py`, 29 tests including Alberta Street Pub + Kelly's Olympian, 2026-06-22)*
+- [x] Pipeline repopulated and new venues appear in `index.html`. *(Full pipeline run 2026-06-22: alberta_street_pub +9, kellys_olympian +3, holocene +6, etc.; both new venues present in the deployed page.)*
+- [x] Deployed to `C:\website\showcat` and visible at showcat.favet.net. *(Verified 2026-06-22: public URL returns HTTP 200 serving the rebuilt 1.19 MB build.)*
+
+---
+
+---
+
+## Phase 10 — Event Enrichment (Spotify URLs + Descriptions)
+
+**Goal:** Surface richer per-event data in the UI for shows that have no Last.fm taste match — direct Spotify artist links and scraped event descriptions.
+
+### Sub-phases
+- **10.1 `event_spotify_url` column** — migration `20260622000004`; `EventSpotifySearchStage` searches Spotify by headliner name and stores the artist URL (or `"none"` sentinel) on the event row. Wired into the pipeline as an optional step (skips gracefully when `SPOTIFY_REFRESH_TOKEN` is absent).
+- **10.2 `description` column** — migration `20260622000005`; `RawEvent.description` and `Event.description` carry per-event description text scraped from venue listing pages. Snapshot upsert preserves existing description when the new scrape omits it.
+- **10.3 `travel.py` extraction** — `showcat.core.travel` extracted to a shared module (used by both `ScoreStage` and `WebOutputAdapter`); includes fallback travel-minutes for small venues not in the Valhalla SQLite matrix.
+- **10.4 `backfill.py` CLI** — `python -m showcat.cli.backfill` runs a full Last.fm history backfill (no time limit), then resolve + web output in sequence, with live progress written to `$WEB_OUTPUT_DIR/backfill_progress.json`.
+
+### Exit Gate 10 (provable)
+- [x] `event_spotify_url` column added via migration; `EventSpotifySearchStage` correctly writes URLs and `"none"` sentinels. *(Migration `20260622000004`; stage in `ingest/events/spotify_search.py`; wired into pipeline as optional step)*
+- [x] `description` column added via migration; snapshot upsert preserves description when re-scrape omits it. *(Migration `20260622000005`; snapshot logic in `ingest/events/snapshot.py`)*
+- [x] `travel.py` module is shared; fallback dict covers all small venues including Alberta Street Pub and Kelly's Olympian. *(Proven by `tests/test_travel.py`, 10 tests)*
+- [x] `event_spotify_url` and `description` data live in DB and appear in the rendered UI. *(2026-06-22: 251 event_spotify_url rows + 181 descriptions in DB; deployed page renders ~177 descriptions and the catcat default image. Ticketmaster `info`/`pleaseNote` now feeds `description` — `tests/test_event_ingest.py::TestTicketmasterAdapter`.)*
+
+> **Description coverage note.** Descriptions come from Ticketmaster (`info`/`pleaseNote`) and the TrueWest cluster — these are real artist/show blurbs. The RHP-platform venue *list* views (Roseland, Hawthorne, Wonder, Alberta Rose, Holocene) and GetDown's JSON-LD carry no blurb.
+> **Investigated 2026-06-22 and rejected:** RHP per-event *detail* pages (`/event/...`) do have a server-rendered `.singleEventDescription`, but its content is **pure logistics boilerplate** — date, age policy, refund/resale warnings, VIP-package contents — with no artist description. Scraping it would clutter cards with refund policies, so the N+1 detail-page fetch is **not worth building** for RHP. Current TM + TrueWest coverage is the right coverage; no further description work is planned.
 
 ---
 

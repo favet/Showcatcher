@@ -75,6 +75,28 @@ Format: `Dn — Title — Decision — Why — Status`.
 **Why:** This is the simplest possible continuous deployment pipeline. Because Showcat is a single-owner pipeline running on a local machine (D15), writing the build artifacts to a local directory synced to the internet eliminates the need for VPS provisioning, GitHub Actions, or remote server syncing. Changes are instantaneous and secure.
 **Status:** Firm. Implemented in Phase 7.
 
+### D18 — Etix Price Scraping Abandoned *(resolved 2026-06-22)*
+**Decision:** Scraping advance ticket prices from Etix.com for Portland venues is written off and abandoned. No further effort will be spent attempting to automate price extraction from Etix portals.
+**Why:** Investigation with both plain HTTP requests and headless Chromium via Playwright confirmed that Etix employs robust DataDome bot-protection gateways. DataDome successfully blocks automated browser requests and requires CAPTCHA resolution. Given the project's constraint against manual intervention/CAPTCHAs and the high maintenance cost of bypassing sophisticated anti-bot protections, the feature cannot be reliably automated.
+**Status:** Resolved (Written off). The `EventEtixPricePatchStage` and related code were deleted.
+
+### D19 — Resolver Guard 3: multi-word fuzzy matches must share a distinctive token *(resolved 2026-06-22)*
+**Decision:** In the fuzzy fallback, when a candidate pair shares **no** exact distinctive token (after stripping articles) and **at least one** side is multi-word, raise the auto-accept bar out of reach so the pair routes to the **review** queue instead of `matched`.
+**Why:** `difflib` char-ratio produced coincidental matches above the 0.75 threshold purely on letter overlap — e.g. `"Like Mang"`→`"louke man"` (0.78), `"Heather Christie"`→`"The Charities"` (0.76). Real multi-word fuzzy matches always share an exact token (`"Mount Joy"`/`"Mt. Joy"` share *joy*; `"Bright Eyes"`/`"Bright Eyez"` share *bright*), so requiring one shared token kills the false positives without dropping legitimate matches. The both-single-token case is left to the existing Guard 1 (0.90 bar), which still permits a high-confidence single-word typo match.
+**Impact:** Applied to live data 2026-06-22 — 113 coincidental matches downgraded (matched 505→392), 99 events lost a falsely-inflated score (re-scored 438→339). Proven by `tests/test_resolve.py` (`test_no_shared_token_guard_*`, `test_shared_token_multiword_still_matches`).
+**Status:** Firm. Residual: a pair sharing only a common given-name token (`"Christian Groth"`→`"Christian Rich"`) still clears — acceptable; tightening further trades too much recall.
+
+### D20 — Catcat mascot is the favicon + default show image *(resolved 2026-06-22)*
+**Decision:** `Media/catcat.png` is shipped as a package asset (`src/showcat/outputs/web/catcat_b64.txt`, base64) and used both as the page favicon and as the default show image when an event has no Spotify/event artwork — replacing the prior `🐱` emoji fallback.
+**Why:** A single embedded asset keeps the static page self-contained (no external image host) and gives a consistent brand mascot. Shipping it inside the package (not just `Media/`) means it deploys with the web output regardless of CWD.
+**Status:** Firm.
+
+### D21 — Spotify quota: throttle event-search so it can't lock out the playlist refresh *(resolved 2026-06-22)*
+**Decision:** `EventSpotifySearchStage` caps each run (`SPOTIFY_SEARCH_MAX_PER_RUN`, default 100), paces to ~2.5 req/s (`SPOTIFY_SEARCH_DELAY_S`, default 0.4), and **stops immediately on a 429** (reading `SpotifyError.retry_after`) instead of retrying. Results persist per-event, so a large backlog drains over several runs.
+**Why:** All Spotify operations share one dev-mode app quota, and exceeding the rolling ~30-second window triggers a **fixed multi-hour cooldown** (observed `Retry-After` ≈ 9.9h). On 2026-06-22 the stage fired ~251 `/search` calls at ~8 req/s and locked out the discovery-playlist refresh (`cli/playlist write`, which also needs `/search`) for the rest of the day. Proven by `tests/test_spotify_search.py` (cap + stop-on-429 + transient-error handling).
+**Operational rule:** don't run a large event-search batch on a day you intend to refresh the playlist.
+**Status:** Firm. See [[reference-spotify-rate-limit]] in memory for the empirical detail.
+
 ## Open questions (do not hardcode silently — resolve in the noted phase)
 
 ### D13 — Spotify account is Premium; live-write bridge path chosen *(resolved Phase 5, OQ1)*

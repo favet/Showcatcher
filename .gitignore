@@ -51,3 +51,5 @@ coverage.xml
 
 # Docker / system logs
 *.log
+
+pipeline_out.txt

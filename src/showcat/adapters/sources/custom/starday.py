@@ -7,6 +7,11 @@ import requests
 from bs4 import BeautifulSoup
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
+from showcat.adapters.sources.title_parser import (
+    is_non_show,
+    normalize_title,
+    split_multi_artist_plus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,17 +80,41 @@ class StardayTavernAdapter(BaseSourceAdapter):
                 # Filter out past events early? We can just pass them, snapshot stage handles it
                 
                 source_id = str(item.get("id", ""))
-                event_url = item.get("url", url)
+                raw_url = item.get("url", "")
+                # Elementor calendar embeds Google Calendar event URLs — not useful as ticket links
+                event_url = url if (not raw_url or "google.com/calendar" in raw_url) else raw_url
                 
+                price = item.get("price") or item.get("cost")
+                if not price and item.get("description"):
+                    import re
+                    match = re.search(r'\$\d+(?:\.\d{2})?', item["description"])
+                    if match:
+                        price = match.group(0)
+
+                image_url = item.get("image") or item.get("thumbnail")
+
+                # ── Title normalization + multi-band split ────────────────────
+                if is_non_show(title):
+                    continue
+                title, openers_from_title, status = normalize_title(title)
+                if status in ("moved", "cancelled"):
+                    continue
+                # Starday packs full bill in the title: "Band A + Band B + TBA"
+                title, openers = split_multi_artist_plus(title, existing_openers=openers_from_title)
+
                 events.append(
                     RawEvent(
                         source=self.source_name,
                         source_id=source_id,
                         headliner=title,
+                        openers=openers,
                         event_date=event_date,
                         show_time=start_time_val,
                         venue="Starday Tavern",
                         ticket_url=event_url,
+                        price=str(price) if price else "At the door",
+                        image_url=image_url,
+                        sold_out=(status == "sold_out"),
                     )
                 )
             except Exception as e:

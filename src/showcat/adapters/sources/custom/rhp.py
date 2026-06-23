@@ -13,6 +13,11 @@ from bs4 import BeautifulSoup
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.sources.custom.date_utils import parse_month_day_text
 from showcat.adapters.sources.custom.time_utils import extract_doors_show_times
+from showcat.adapters.sources.title_parser import (
+    is_non_show,
+    normalize_title,
+    split_multi_artist_comma,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,17 +92,44 @@ class RhpVenueAdapter(BaseSourceAdapter):
                 continue
             seen.add(source_id)
 
+            # Price
+            price_el = row.select_one(".rhp-event__cost-text--list, .rhp-event__cost-text--grid, .eventCost span, .eventCost")
+            price_str = price_el.get_text(strip=True) if price_el else None
+
+            # Image URL
+            image_el = row.select_one(".rhp-event-thumb img, .rhp-events-event-image img, img.eventListImage")
+            image_url = image_el.get("src") if image_el else None
+
+            # ── Title normalization ───────────────────────────────────────
+            if is_non_show(headliner):
+                continue
+
+            openers: list[str] = []
+            headliner, openers, status = normalize_title(headliner, existing_openers=openers)
+
+            # MOVED events: the correct venue's scraper will pick the show up.
+            if status == "moved":
+                continue
+
+            # Holocene-specific: split comma-separated multi-band bills
+            # (3+ parts only; 2-part comma lists are too ambiguous).
+            if self.SOURCE == "holocene":
+                headliner, openers = split_multi_artist_comma(headliner, openers, min_parts=3)
+
             events.append(
                 RawEvent(
                     source=self.source_name,
                     source_id=source_id,
                     headliner=headliner,
-                    openers=[],
+                    openers=openers,
                     event_date=event_date,
                     doors_time=doors_time,
                     show_time=show_time,
                     venue=venue or self.DEFAULT_VENUE,
                     ticket_url=ticket_url,
+                    price=price_str,
+                    image_url=image_url,
+                    sold_out=(status == "sold_out"),
                 )
             )
 
@@ -125,3 +157,17 @@ class WonderBallroomAdapter(RhpVenueAdapter):
     URL = "https://wonderballroom.com/events/"
     SOURCE = "wonder_ballroom"
     DEFAULT_VENUE = "Wonder Ballroom"
+
+
+class AlbertaRoseAdapter(RhpVenueAdapter):
+    URL = "https://albertarosetheatre.com/calendar/"
+    SOURCE = "alberta_rose"
+    DEFAULT_VENUE = "Alberta Rose Theatre"
+
+
+class HoloceneAdapter(RhpVenueAdapter):
+    # Holocene uses the RHP grid view (.rhpSingleEvent), which is the fallback
+    # selector in RhpVenueAdapter.parse().
+    URL = "https://www.holocene.org/events/"
+    SOURCE = "holocene"
+    DEFAULT_VENUE = "Holocene"

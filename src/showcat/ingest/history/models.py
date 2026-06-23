@@ -1,4 +1,4 @@
-﻿"""ORM models for Phase 1 listening-history tables."""
+"""ORM models for Phase 1 listening-history tables."""
 from datetime import datetime
 
 from sqlalchemy import (
@@ -29,6 +29,10 @@ class Artist(Base):
         DateTime(timezone=True), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    spotify_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    album_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    album_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     scrobbles: Mapped[list["Scrobble"]] = relationship(back_populates="artist")
 

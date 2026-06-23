@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.sources.custom.date_utils import parse_full_date
 from showcat.adapters.sources.custom.time_utils import extract_doors_show_times
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -104,18 +105,39 @@ class RevolutionHallAdapter(BaseSourceAdapter):
             else:
                 venue = "Revolution Hall"
 
+            # Image URL
+            image_el = wrapper.select_one("img:not(.venue-logo)")
+            image_url = image_el.get("src") if image_el else None
+            if image_url and image_url.startswith("/"):
+                image_url = f"{_BASE_URL}{image_url}"
+
+            # Price
+            price_el = wrapper.select_one(".event-price, .event-cost, .event-price-range, .price")
+            price_str = price_el.get_text(strip=True) if price_el else None
+
             seen.add(source_id)
+
+            # ── Title normalization ───────────────────────────────────────
+            if is_non_show(headliner):
+                continue
+            headliner, openers, status = normalize_title(headliner)
+            if status in ("moved", "cancelled"):
+                continue
+
             events.append(
                 RawEvent(
                     source=self.SOURCE,
                     source_id=source_id,
                     headliner=headliner,
-                    openers=[],
+                    openers=openers,
                     event_date=event_date,
                     doors_time=doors_time,
                     show_time=show_time,
                     venue=venue,
                     ticket_url=ticket_url,
+                    price=price_str,
+                    image_url=image_url,
+                    sold_out=(status == "sold_out"),
                 )
             )
 

@@ -42,6 +42,13 @@ DEFAULT_REVIEW_FLOOR = 0.55
 
 _ARTICLES = frozenset({"the", "a", "an"})
 
+# Parenthetical context to strip before fuzzy matching:
+#   "(of La Femme)" — the artist is in a side project
+#   "(formerly X)" — old band name context
+#   "(DJ Set)" / "(live)" / "(acoustic)" — performance format
+_OF_CONTEXT = re.compile(r"\s*\((?:of|formerly|ex-)\s+.+?\)\s*$", re.IGNORECASE)
+_ROLE_CONTEXT = re.compile(r"\s*\((?:DJ\s+[Ss]et|live|acoustic|solo\s+set)\)\s*$", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class MatchCandidate:
@@ -67,6 +74,19 @@ def normalize(name: str) -> str:
     """Lowercase, strip punctuation to spaces, collapse whitespace."""
     lowered = re.sub(r"[^a-z0-9]+", " ", name.lower())
     return re.sub(r"\s+", " ", lowered).strip()
+
+
+def strip_artist_context(name: str) -> str:
+    """Remove parenthetical context from an artist name before matching.
+
+    Handles:
+    - ``"Marlon Magnée (of La Femme)"`` → ``"Marlon Magnée"``
+    - ``"Matthew Dear (DJ set)"`` → ``"Matthew Dear"``
+    - ``"X (formerly Y)"`` → ``"X"``
+    """
+    name = _OF_CONTEXT.sub("", name)
+    name = _ROLE_CONTEXT.sub("", name)
+    return name.strip()
 
 
 def similarity(a: str, b: str) -> float:
@@ -96,9 +116,23 @@ def _adjusted_match_threshold(event_name: str, taste_name: str, base: float) -> 
     if shorter and shorter.issubset(longer) and shorter != longer:
         return max(base, 0.92)
 
+    ev_distinct = _distinctive_tokens(event_name)
+    ta_distinct = _distinctive_tokens(taste_name)
+    shared = set(ev_distinct) & set(ta_distinct)
+
+    # Guard 3 — no shared distinctive token, and at least one side is
+    # multi-word: the char similarity is coincidental (e.g. "Like Mang" /
+    # "louke man", "Heather Christie" / "The Charities"). Real multi-word
+    # fuzzy matches share at least one exact distinctive token ("Mount Joy" /
+    # "Mt. Joy" share "joy"). Require an unreachable threshold so these route
+    # to review. The both-single-token case is left to Guard 1, which permits
+    # a high-confidence single-word fuzzy match (e.g. a typo'd band name).
+    if not shared and (len(ev_distinct) >= 2 or len(ta_distinct) >= 2):
+        return max(base, 1.01)  # confidence is <= 1.0 → forces "review"
+
     # Guard 1 — single distinctive token: "The Strike" / "The Strokes" share
     # a prefix that yields high char similarity but are unrelated bands.
-    if len(_distinctive_tokens(event_name)) == 1 and len(_distinctive_tokens(taste_name)) == 1:
+    if len(ev_distinct) == 1 and len(ta_distinct) == 1:
         return max(base, 0.90)
 
     return base
@@ -169,6 +203,16 @@ def match_artist(
         if score > best_score:
             best_score = score
             best = ta
+
+    # 3b. If the event name has parenthetical context ("(of Band)", "(DJ Set)"),
+    #     try again with the stripped version; keep whichever yields a better score.
+    stripped_name = strip_artist_context(event_artist_name)
+    if stripped_name != event_artist_name:
+        for ta in taste_artists:
+            score = similarity(stripped_name, ta.raw_name)
+            if score > best_score:
+                best_score = score
+                best = ta
 
     if best is None or best_score < review_floor:
         return None

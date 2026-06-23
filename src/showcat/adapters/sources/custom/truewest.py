@@ -6,14 +6,36 @@ covering both Mississippi Studios and its sister room Polaris Hall. Each
 identifies Mississippi vs Polaris), and sits under a `.day-header` ("Sun 6/21").
 """
 import logging
+import re
+from datetime import time
 
 import requests
 from bs4 import BeautifulSoup
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.sources.custom.date_utils import parse_numeric_md
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
+
+# "Doors: 7PM / Show: 8 PM" or "Doors: 7:30PM / Show: 8:30 PM"
+_TIME_RE = re.compile(
+    r"Doors[:\s]+(\d{1,2}(?::\d{2})?\s*(?:AM|PM))"
+    r".*?Show[:\s]+(\d{1,2}(?::\d{2})?\s*(?:AM|PM))",
+    re.IGNORECASE,
+)
+
+
+def _parse_12h(s: str) -> time | None:
+    """Parse '7PM', '7:30PM', '8 PM' → datetime.time."""
+    s = s.strip().upper().replace(" ", "")
+    for fmt in ("%I:%M%p", "%I%p"):
+        try:
+            import datetime as dt
+            return dt.datetime.strptime(s, fmt).time()
+        except ValueError:
+            pass
+    return None
 
 
 class TrueWestAdapter(BaseSourceAdapter):
@@ -75,15 +97,55 @@ class TrueWestAdapter(BaseSourceAdapter):
                 continue
             seen.add(source_id)
 
+            # Image URL: find img excluding venue-logo
+            image_el = ev.select_one("img:not(.venue-logo)")
+            image_url = image_el.get("src") if image_el else None
+
+            # Price
+            price_el = ev.select_one(".event-price, .event-cost, .event-price-range")
+            price_str = price_el.get_text(strip=True) if price_el else None
+
+            # Doors / show times from "Doors: 7PM / Show: 8 PM" paragraph text.
+            doors_time: time | None = None
+            show_time: time | None = None
+            for p in ev.find_all(string=_TIME_RE):
+                m = _TIME_RE.search(p)
+                if m:
+                    doors_time = _parse_12h(m.group(1))
+                    show_time = _parse_12h(m.group(2))
+                    break
+
+            # Description: any paragraph text that isn't purely a time/age/price line.
+            _skip_re = re.compile(r"^(Doors|Show|All Ages|21\+|18\+|\$|Free)", re.IGNORECASE)
+            desc_parts: list[str] = []
+            for p in ev.select("p, .event-description, .event-blurb"):
+                txt = p.get_text(strip=True)
+                if txt and not _skip_re.match(txt) and len(txt) > 20:
+                    desc_parts.append(txt)
+            description = " ".join(desc_parts) or None
+
+            # ── Title normalization ───────────────────────────────────────
+            if is_non_show(headliner):
+                continue
+            headliner, openers, status = normalize_title(headliner)
+            if status in ("moved", "cancelled"):
+                continue
+
             events.append(
                 RawEvent(
                     source=self.source_name,
                     source_id=source_id,
                     headliner=headliner,
-                    openers=[],
+                    openers=openers,
                     event_date=event_date,
                     venue=venue,
                     ticket_url=ticket_url,
+                    price=price_str,
+                    image_url=image_url,
+                    sold_out=(status == "sold_out"),
+                    doors_time=doors_time,
+                    show_time=show_time,
+                    description=description,
                 )
             )
 

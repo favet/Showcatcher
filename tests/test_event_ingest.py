@@ -357,3 +357,9 @@ class TestTicketmasterAdapter:
         assert "Built to Spill" in modest_mouse.openers
         assert modest_mouse.venue == "Crystal Ballroom"
         assert modest_mouse.event_date == date(2026, 7, 15)
+        # Description comes from the TM "info" field.
+        assert modest_mouse.description == "An evening with Modest Mouse. All ages welcome."
+
+        # When "info" is absent, fall back to "pleaseNote".
+        death_cab = next(e for e in events if e.headliner == "Death Cab for Cutie")
+        assert death_cab.description == "Doors at 7pm. No re-entry."

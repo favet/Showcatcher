@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.sources.custom.time_utils import extract_doors_show_times
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,27 @@ class KentonClubAdapter(BaseSourceAdapter):
                     openers = parts[1:] if len(parts) > 1 else []
 
                     if headliner:
+                        # Skip junk/non-show entries (addresses, emails, etc.)
+                        if is_non_show(headliner):
+                            continue
+                        headliner, openers, status = normalize_title(
+                            headliner, existing_openers=openers
+                        )
+                        if status in ("moved", "cancelled"):
+                            continue
+
                         source_id = f"{current_date.strftime('%Y-%m-%d')}-{headliner[:10].replace(' ', '').lower()}"
+                        # Extract price if posted; default to "At the door" —
+                        # Kenton Club rarely posts advance prices.
+                        price_str = None
+                        for b_line in current_bands:
+                            price_match = re.search(r'\$\d+(?:\.\d{2})?', b_line)
+                            if price_match:
+                                price_str = price_match.group(0)
+                                break
+                        if not price_str:
+                            price_str = "At the door"
+
                         events.append(
                             RawEvent(
                                 source=self.source_name,
@@ -67,6 +88,8 @@ class KentonClubAdapter(BaseSourceAdapter):
                                 show_time=current_time,
                                 venue="World Famous Kenton Club",
                                 ticket_url=url,
+                                price=price_str,
+                                sold_out=(status == "sold_out"),
                             )
                         )
 

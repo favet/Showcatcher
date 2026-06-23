@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.sources.custom.time_utils import extract_doors_show_times
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,23 @@ class NoFunBarAdapter(BaseSourceAdapter):
                 # "The Warped Lines • Sunny Bear Forrest • Speaker Typhoon"
                 parts = [p.strip() for p in title.replace("•", "|").split("|")]
                 headliner = parts[0]
-                openers = parts[1:] if len(parts) > 1 else []
+                raw_openers = parts[1:] if len(parts) > 1 else []
+
+                # ── Title normalization ─────────────────────────────────
+                if is_non_show(headliner):
+                    continue
+                headliner, openers, status = normalize_title(headliner, existing_openers=raw_openers)
+                if status in ("moved", "cancelled"):
+                    continue
+
+                # Image URL
+                image_el = event_item.select_one('.eventlist-thumbnail img, img')
+                image_url = image_el.get('data-src') or image_el.get('src') if image_el else None
+
+                # Price from listing text; "At the door" when none posted (bar venue)
+                import re
+                price_match = re.search(r'\$\d+(?:\.\d{2})?', event_text)
+                price_str = price_match.group(0) if price_match else "At the door"
 
                 events.append(
                     RawEvent(
@@ -88,6 +105,8 @@ class NoFunBarAdapter(BaseSourceAdapter):
                         show_time=show_time_val,
                         venue="No Fun Bar",
                         ticket_url=event_url,
+                        price=price_str,
+                        image_url=image_url,
                     )
                 )
             except Exception as e:

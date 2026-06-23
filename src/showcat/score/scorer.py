@@ -48,7 +48,7 @@ SCORING_CONFIGS: dict[str, ScoringConfig] = {
     "discovery-v1": ScoringConfig(
         version="discovery-v1",
         weights={"taste": 0.5, "adjacency": 0.5, "discovery": 2.0, "recency": 0.3,
-                 "distance": 0.0},
+                 "distance": 0.15},
         taste_saturation_k=5.0,
     ),
 }

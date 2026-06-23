@@ -23,6 +23,8 @@ from sqlalchemy.orm import Session
 
 from showcat.core.affinity import compute_decayed_affinity
 from showcat.core.base import BaseStage
+from showcat.core.travel import distance_signal, get_travel_times, lookup_travel
+from showcat.ingest.events.models import Event
 from showcat.ingest.history.models import Artist, ArtistTag, Scrobble
 from showcat.resolve.models import EventMatch
 from showcat.score.models import EventScore
@@ -96,20 +98,24 @@ class ScoreStage(BaseStage):
         taste_vector = build_taste_vector(artist_vectors, weight_by_key)
 
         # --- 3. Score each matched artist; the show takes its best. ---
+        travel_times = get_travel_times()
         matched = session.execute(
-            select(EventMatch, Artist)
+            select(EventMatch, Artist, Event)
             .join(Artist, EventMatch.artist_id == Artist.id)
+            .join(Event, EventMatch.event_id == Event.id)
             .where(EventMatch.status == "matched")
         ).all()
 
         best_by_event: dict[int, ScoreBreakdown] = {}
-        for match, artist in matched:
+        for match, artist, event in matched:
             key = _artist_key(artist.mbid, artist.raw_name)
             taste = weight_by_key.get(key, 0.0)
             adj = adjacency(artist_vectors.get(key, {}), taste_vector)
             disc = discovery_signal(adj, playcount_by_key.get(key, 0))
             rec = recency_signal(last_play_days.get(key, 0.0))
-            signals = ScoreSignals(taste=taste, adjacency=adj, discovery=disc, recency=rec)
+            travel_info = lookup_travel(event.venue, travel_times)
+            dist = distance_signal(travel_info["minutes"] if travel_info else None)
+            signals = ScoreSignals(taste=taste, adjacency=adj, discovery=disc, recency=rec, distance=dist)
             breakdown = compute_score(signals, self._version)
 
             current = best_by_event.get(match.event_id)

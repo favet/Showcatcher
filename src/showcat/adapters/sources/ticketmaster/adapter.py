@@ -28,6 +28,7 @@ from typing import Any
 import requests
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
+from showcat.adapters.sources.title_parser import decode_html, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +140,46 @@ class TicketmasterAdapter(BaseSourceAdapter):
             # Headliner + openers via attractions
             attractions = raw.get("_embedded", {}).get("attractions", [])
             artist_names = [a.get("name", "").strip() for a in attractions if a.get("name")]
-            headliner = artist_names[0] if artist_names else name
-            openers = artist_names[1:] if len(artist_names) > 1 else []
+            if artist_names:
+                headliner = artist_names[0]
+                openers = artist_names[1:]
+            else:
+                # Fallback: use the event name, decode HTML entities and normalize
+                clean_name = decode_html(name)
+                headliner, _norm_openers, _status = normalize_title(clean_name)
+                openers = []
+
+            # Pricing information
+            price_ranges = raw.get("priceRanges", [])
+            price_str = None
+            if price_ranges:
+                pr = price_ranges[0]
+                min_val = pr.get("min")
+                max_val = pr.get("max")
+                curr = pr.get("currency", "USD")
+                symbol = "$" if curr == "USD" else (curr + " ")
+                if min_val is not None and max_val is not None:
+                    if min_val == max_val:
+                        price_str = f"{symbol}{min_val:.2f}"
+                    else:
+                        price_str = f"{symbol}{min_val:.2f} - {symbol}{max_val:.2f}"
+                elif min_val is not None:
+                    price_str = f"{symbol}{min_val:.2f}"
+
+            # High-res event image URL
+            images = raw.get("images", [])
+            image_url = None
+            if images:
+                sorted_images = sorted(images, key=lambda img: img.get("width") or 0, reverse=True)
+                image_url = sorted_images[0].get("url")
+
+            # Description: TM exposes free-text "info" (the show blurb) and
+            # "pleaseNote" (logistics). Prefer info; fall back to pleaseNote.
+            description = None
+            raw_desc = raw.get("info") or raw.get("pleaseNote")
+            if raw_desc:
+                cleaned = decode_html(raw_desc).strip()
+                description = cleaned or None
 
             return RawEvent(
                 source=self.source_name,
@@ -152,6 +191,9 @@ class TicketmasterAdapter(BaseSourceAdapter):
                 openers=openers,
                 on_sale_date=on_sale,
                 ticket_url=ticket_url,
+                price=price_str,
+                image_url=image_url,
+                description=description,
             )
         except Exception as exc:
             logger.warning(

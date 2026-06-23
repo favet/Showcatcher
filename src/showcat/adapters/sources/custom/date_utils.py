@@ -73,7 +73,7 @@ def parse_full_date(text: str, today: date | None = None) -> date | None:
     from datetime import datetime
 
     clean = re.sub(r"(\d+)(st|nd|rd|th)\b", r"\1", text).strip()
-    for fmt in ("%a, %B %d, %Y", "%A, %B %d, %Y", "%B %d, %Y"):
+    for fmt in ("%a, %B %d, %Y", "%A, %B %d, %Y", "%B %d, %Y", "%b %d, %Y"):
         try:
             return datetime.strptime(clean, fmt).date()
         except ValueError:

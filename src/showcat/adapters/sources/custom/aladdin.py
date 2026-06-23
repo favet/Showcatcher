@@ -21,6 +21,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,15 @@ class AladdinAdapter(BaseSourceAdapter):
                 continue
             seen_ids.add(source_id)
 
+            # Price
+            price_el = card.select_one(".event-price, .event-cost, .event-price-range")
+            price_str = price_el.get_text(strip=True) if price_el else None
+
+            # Image URL
+            image_el = card.select_one(".event-image img, img")
+            image_url = image_el.get("src") if image_el else None
+
+            headliner, _, status = normalize_title(headliner)
             events.append(
                 RawEvent(
                     source=self.source_name,
@@ -102,6 +112,9 @@ class AladdinAdapter(BaseSourceAdapter):
                     show_time=show_time,
                     venue=venue or self.DEFAULT_VENUE,
                     ticket_url=ticket_url,
+                    price=price_str,
+                    image_url=image_url,
+                    sold_out=(status == "sold_out"),
                 )
             )
 

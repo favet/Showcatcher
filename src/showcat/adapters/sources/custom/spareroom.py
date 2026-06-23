@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 from showcat.adapters.sources.base import BaseSourceAdapter, RawEvent
 from showcat.adapters.sources.custom.time_utils import extract_doors_show_times
+from showcat.adapters.sources.title_parser import is_non_show, normalize_title
 
 logger = logging.getLogger(__name__)
 
@@ -96,9 +97,14 @@ class SpareRoomAdapter(BaseSourceAdapter):
                     if opener_str:
                         openers = [o.strip() for o in opener_str.split('&') if o.strip()]
 
+            # Try to find a price in the text block (e.g., "$10" or "Cover: $10")
+            price_match = re.search(r'\$\d+(?:\.\d{2})?', text)
+            price_str = price_match.group(0) if price_match else None
+
             if headliner:
                 source_id = f"{event_date.strftime('%Y-%m-%d')}-{headliner[:10].replace(' ', '').lower()}"
 
+                headliner, _, status = normalize_title(headliner)
                 events.append(
                     RawEvent(
                         source=self.source_name,
@@ -110,6 +116,8 @@ class SpareRoomAdapter(BaseSourceAdapter):
                         show_time=show_time_val,
                         venue="The Spare Room",
                         ticket_url=url,
+                        price=price_str,
+                        sold_out=(status == "sold_out"),
                     )
                 )
 

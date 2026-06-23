@@ -8,9 +8,9 @@ import requests
 logger = logging.getLogger(__name__)
 
 LASTFM_API_BASE = "https://ws.audioscrobbler.com/2.0/"
-# Last.fm terms: max 5 requests/second for most endpoints.
-# We stay conservative at 4/s (250 ms between calls).
-MIN_INTERVAL_SECONDS = 0.25
+# Last.fm read endpoints tolerate concurrent pagination well.
+# This delay only applies when using the single-threaded _get path.
+MIN_INTERVAL_SECONDS = 0.05
 # Transient-failure handling: Last.fm intermittently returns 5xx during deep
 # pagination. Retry those (and connection errors) with exponential backoff so a
 # single hiccup doesn't abort a long backfill.

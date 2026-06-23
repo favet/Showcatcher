@@ -60,7 +60,7 @@
 | Hawthorne Theatre | Hawthorne / Buckman | 750 | Rock, metal, punk | Dedicated | ✓ | **Etix** ✓verified | `KovZpZAkn7IA` **verified** | hawthornetheater.com | ✓ |
 | Aladdin Theater | Sellwood-Moreland | 620 | Americana, folk, world | Dedicated | ✓ | **Etix** ✓verified | `KovZpa3qfe` **verified** | aladdin-theater.com | ✓ |
 | Wonder Ballroom | Alberta Arts District | 650 | Indie, rock, folk | Dedicated | ✓ | **Etix** ✓verified | `KovZpa9hBe` **verified** | wonderballroom.com | ✓ |
-| Bossanova Ballroom | Central Eastside | ~700 | Dance, electronic, events | Dedicated | ✓ | Tixr / Ticket Fairy | N/A | novapdx.com | ○ |
+| Nova PDX (formerly Bossanova Ballroom) | Central Eastside | ~700 | Dance, electronic, events | Dedicated | ✓ | **Tixr** ✓verified | `KovZpZAaIIFA` **verified** | novapdxevents.com/event-calendar | ✓ |
 | Polaris Hall | Central Eastside | ~500 | Electronic, dance, DJ | Dedicated | ✓ | **Etix** ✓verified | `Z7r9jZadc-` **verified** | polarishallpdx.com | ✓ |
 | Star Theater | Old Town | ~350 | Rock, alternative, punk | Dedicated | ✓ | Ticketmaster | `KovZpZAIvlnA` **verified** | startheaterportland.com | ○ |
 | Lola's Room | Downtown | ~400 | Pop, dance, indie | Dedicated | ✓ | **Etix** ✓verified | `KovZpZA1vlJA` **verified** | mcmenamins.com/crystal-ballroom/lolas-room | ✓ |
@@ -85,14 +85,14 @@
 | McMenamins Kennedy School (theater) | Concordia | ~250 | Acoustic, eclectic | Dedicated | ✓ | McMenamins own site | N/A | mcmenamins.com/kennedy-school | ○ |
 | Bunk Bar | Central Eastside | ~200 | Rock, indie, eclectic | Occasional/Bar | ✗ | Eventbrite / own site | N/A | bunkbar.com | ✗ |
 | Jack London Revue | Downtown | ~150 | Jazz, blues, eclectic | Dedicated/Basement | ✓ | TicketWeb / TM | `KovZpZAkttkA` **verified** | jacklondonrevue.com | ○ |
-| Kelly's Olympian | Downtown | ~150 | Rock, punk, bar shows | Occasional/Bar | ✓ | WordPress (Tribe API) | N/A | kellysolympian.com | ○ |
+| Kelly's Olympian | Downtown | ~150 | Rock, punk, bar shows | Occasional/Bar | ✓ | WordPress (Tribe API) | N/A | kellysolympian.com | ✓ |
 | Turn! Turn! Turn! | Boise-Eliot | ~100 | Indie, experimental, DIY | Occasional/Bar | ? | Door / own site | N/A | turnturnturnnpdx.com | ○ |
 | White Eagle Saloon | N Portland | ~200 | McMenamins live stage | Dedicated | ✓ | **Etix** ✓verified | `KovZpZAFFEdA` **verified** | mcmenamins.com/white-eagle-saloon-hotel/white-eagle | ✓ |
 | Al's Den | Downtown | ~100 | Acoustic, indie, local | Dedicated/Basement | ✓ | **Etix** ✓verified | `Z7r9jZaA2K` **verified** | mcmenamins.com/crystal-hotel/things-to-do/music-event-calendar | ✓ |
 | The Old Church | Downtown | ~300 | Acoustic, folk, classical | Dedicated | ✓ | Etix / Ticketmaster | `KovZpap53e` **verified** | theoldchurch.org | ○ |
 | The Coffin Club | SE Portland | ~150 | Goth, industrial, punk | Dedicated | ✓ | Ticketleap / Ticketmaster | `Z7r9jZaA1l` **verified** | thecoffinclubpdx.com | ○ |
 | Twilight Cafe | SE Portland | ~100 | Rock, punk, metal | Occasional/Bar | ✓ | Door / Ticketmaster | `Z7r9jZa7sW` **verified** | twilightcafeandbar.com | ○ |
-| Alberta Street Pub | NE Portland | ~150 | Acoustic, Americana, pub | Occasional/Bar | ✓ | Own site / Ticketleap | N/A | albertastreetpub.com | ○ |
+| Alberta Street Pub | NE Portland | ~150 | Acoustic, Americana, pub | Occasional/Bar | ✓ | Own site / Ticketleap | N/A | albertastreetpub.com | ✓ |
 | Artichoke Music | SE Portland | ~100 | Acoustic, folk, community | Dedicated | ✓ | Own site | N/A | artichokemusic.org | ○ |
 | Blue Diamond | NE Portland | ~100 | Jazz, blues, pub stage | Occasional/Bar | ✓ | None / Door | N/A | bluediamondpdx.com | ✓ |
 | LaurelThirst Public House | NE Portland | ~150 | Bluegrass, country, folk | Occasional/Bar | ✓ | None / Door | N/A | laurelthirst.com | ✓ |
@@ -124,11 +124,13 @@ Moda Center, Veterans Memorial Coliseum, Keller Auditorium, Star Theater, Lola's
 → Action: Add these verified TM IDs to `TICKETMASTER_VENUE_IDS` in `.env`.
 
 **Tier 3 — non-TM venues requiring separate/JSON-LD/WordPress adapters:**
-Alberta Street Pub (JSON-LD), Artichoke Music (JSON-LD), Kelly's Olympian (WordPress Tribe API).
-→ Action: Build and deploy `JsonLdAdapter` (which handles generic JSON-LD and WordPress event JSON data).
+Artichoke Music (JSON-LD).
+→ Action: Build a `JsonLdAdapter` for generic JSON-LD events.
+- Alberta Street Pub: ✓ (Squarespace scraper)
+- Kelly's Olympian: ✓ (Tribe Events REST API)
 
 - Bunk Bar: ✗ Closed permanently in 2019.
-- Bossanova Ballroom (Nova PDX): Tixr ticketing (0 TM events, direct curl block/timeout). Skip for now.
+- Nova PDX (formerly Bossanova Ballroom): ✓ (DOM JSON-LD scraper implemented and tested)
 - Lincoln Hall (PSU): AudienceView ticketing (0 TM events). Skip for now.
 - The Goodfoot Pub & Lounge: Blocks automated requests (HTTP 403). Skip.
 - Mississippi Pizza / The Midnight PDX: Probed but lack structured JSON-LD events. Skip.
