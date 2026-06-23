@@ -231,7 +231,11 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
         doors_display = fmt_time(doors_time) if doors_time else None
         show_display = fmt_time(show_time) if show_time else None
 
-        sort_time = show_time or doors_time or dt.time()
+        # Untimed shows default to 8pm (a typical showtime), NOT midnight — a
+        # midnight default made today's untimed shows compute a "past" timestamp,
+        # greying them and sorting them to the top of the feed.
+        time_known = show_time is not None or doors_time is not None
+        sort_time = show_time or doors_time or dt.time(20, 0)
         timestamp = int(dt.datetime.combine(event.date, sort_time).timestamp())
 
         if event.date == today:
@@ -280,6 +284,7 @@ def _query_shows(session: Session, scoring_version: str, limit: int = 2000) -> l
             "description": event.description,
             "source": event.source,
             "timestamp": timestamp,
+            "time_known": time_known,
         })
 
     merged = merge_shows_by_identity(shows)
@@ -405,19 +410,20 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       color: var(--text);
     }}
 
-    /* Filter chips */
+    /* Filter chips — wrap onto multiple rows so every filter is reachable on
+       mobile without a hidden horizontal scroll. */
     .filter-row {{
-      display: flex; align-items: center; gap: 0.4rem;
-      overflow-x: auto; padding-bottom: 0.75rem;
-      scrollbar-width: none;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+      padding-bottom: 0.6rem;
     }}
-    .filter-row::-webkit-scrollbar {{ display: none; }}
     .chip {{
       flex-shrink: 0;
-      font-size: 0.75rem; font-weight: 500;
-      padding: 0.3rem 0.65rem;
+      font-size: 0.8rem; font-weight: 500;
+      padding: 0.4rem 0.8rem;
+      min-height: 34px;
+      display: inline-flex; align-items: center; gap: 0.3rem;
       border: 1px solid var(--border);
-      border-radius: 5px;
+      border-radius: 999px;
       background: transparent; color: var(--muted);
       transition: all 0.12s;
       white-space: nowrap;
@@ -431,7 +437,18 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       background: var(--tonight); border-color: var(--tonight);
       color: #fff;
     }}
-    .chip-divider {{ width: 1px; height: 1.1rem; background: var(--border); flex-shrink: 0; margin: 0 0.1rem; }}
+    /* The taste (Last.fm) filter gets its own colour so it reads as distinct
+       from the date filters. */
+    .chip.taste-active {{
+      background: #34d399; border-color: #34d399; color: #04231a; font-weight: 600;
+    }}
+    .chip-divider {{ width: 1px; height: 1.3rem; background: var(--border); flex-shrink: 0; margin: 0 0.15rem; }}
+    /* On wider screens the wrap rarely triggers; keep the divider. On narrow
+       screens it simply wraps with the chips. */
+    @media (max-width: 480px) {{
+      .chip-divider {{ display: none; }}
+      .chip {{ font-size: 0.82rem; padding: 0.45rem 0.85rem; }}
+    }}
 
     /* Sort row */
     .sort-row {{
@@ -887,7 +904,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
         <button class="chip" :class="{{active: dateRange === 'month'}}" @click="setDate('month')">This Month</button>
         <button class="chip" :class="{{active: dateRange === 'all'}}" @click="setDate('all')">All</button>
         <div class="chip-divider"></div>
-        <button class="chip" :class="{{active: matchedOnly}}" @click="matchedOnly = !matchedOnly">Known</button>
+        <button class="chip" :class="{{'taste-active': matchedOnly}}" @click="matchedOnly = !matchedOnly" title="Only shows matched to your Last.fm taste">&#9834; Last.fm</button>
         <button class="chip" :class="{{active: favoritesOnly}}" @click="favsChipClick">&#9733; Favs</button>
       </div>
 
@@ -919,7 +936,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
 
       <div v-for="show in group.shows" :key="show.id"
            class="show-card"
-           :class="{{  'is-past': isPast(show.timestamp) }}"
+           :class="{{  'is-past': isPast(show.timestamp, show.time_known) }}"
            @click="toggleExpand(show.id)"
            :data-id="show.id">
 
@@ -1149,7 +1166,10 @@ createApp({{
       // "8:00 PM" → "8p", "7:30 PM" → "7:30p", "10:00 AM" → "10a"
       return t.replace(/:00(?=\\s)/, '').replace(/\\s+PM/i, 'p').replace(/\\s+AM/i, 'a');
     }};
-    const isPast  = (ts) => ts < now.value - 7200;
+    // A show counts as "past" only if we know its time and it started >2h ago.
+    // Untimed shows (guessed 8pm) are never treated as past, so today's untimed
+    // shows stay visible rather than greying out.
+    const isPast  = (ts, timeKnown) => timeKnown !== false && ts < now.value - 7200;
     const isSoon  = (ts) => ts > now.value && ts < now.value + 7200;
 
     const DEFAULT_SHOW_IMG = "{CATCAT_DATA_URI}";
@@ -1187,6 +1207,7 @@ createApp({{
       const monthEnd = inDays(30);
       const q = searchQuery.value.toLowerCase().trim();
       let r = shows.value.filter(s => {{
+        if (isPast(s.timestamp, s.time_known)) return false;  // drop shows already over
         if (dateRange.value === 'tonight' && s.date !== todayStr) return false;
         if (dateRange.value === 'week'    && s.date > weekEnd)    return false;
         if (dateRange.value === 'month'   && s.date > monthEnd)   return false;
