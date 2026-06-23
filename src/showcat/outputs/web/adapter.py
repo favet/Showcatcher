@@ -395,6 +395,42 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     }}
     .brand-meta {{ font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }}
     .brand-meta strong {{ color: var(--text); }}
+    
+    .header-tools {{
+      display: flex; align-items: center; gap: 0.8rem;
+      position: relative; margin-left: auto;
+    }}
+    .tool-btn {{
+      font-size: 1.15rem; cursor: pointer; transition: all 0.2s ease;
+      opacity: 0.6; filter: grayscale(100%);
+      user-select: none;
+    }}
+    .tool-btn:hover, .tool-btn.active {{
+      opacity: 1; filter: grayscale(0%);
+    }}
+    .vial-btn:hover, .vial-btn.active {{
+      text-shadow: 0 0 12px var(--accent); color: var(--accent);
+      transform: scale(1.1);
+    }}
+    .settings-btn:hover {{ transform: rotate(45deg); }}
+    
+    .vial-popover {{
+      position: absolute; top: 100%; right: 0; margin-top: 0.65rem;
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 1.25rem; border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6), 0 0 20px rgba(167, 139, 250, 0.1);
+      z-index: 100; min-width: 320px; cursor: default;
+    }}
+    .vial-popover::before {{
+      content: ''; position: absolute; top: -6px; right: 2rem;
+      width: 10px; height: 10px; background: var(--surface);
+      border-top: 1px solid var(--border); border-left: 1px solid var(--border);
+      transform: rotate(45deg);
+    }}
+    .vial-popover .health-stats {{
+      margin-bottom: 0; flex-direction: column; gap: 0.8rem;
+    }}
+    
     /* Health metrics — progress bars */
     .health-stats {{
       display: flex; gap: 0.75rem; margin-bottom: 0.85rem;
@@ -450,50 +486,37 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       color: var(--text);
     }}
 
-    /* Filters — one row: a segmented date control + two toggle pills. Stays on
-       a single line; if a very narrow screen can't fit it, it scrolls sideways
-       rather than wrapping to a messy second row. */
-    .filter-row {{
-      display: flex; align-items: center; gap: 0.5rem;
-      padding-bottom: 0.6rem;
-      overflow-x: auto; scrollbar-width: none;
+    /* Command Strip */
+    .command-strip {{ display: flex; flex-direction: column; gap: 0.8rem; padding-bottom: 0.8rem; }}
+    .cs-top {{ display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }}
+    .cs-slider-group {{ flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 0.3rem; }}
+    .cs-label {{ font-size: 0.7rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }}
+    .score-dial {{
+      -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px;
+      background: rgba(255,255,255,0.1); outline: none; transition: background 0.2s;
     }}
-    .filter-row::-webkit-scrollbar {{ display: none; }}
-
-    /* Segmented date control */
-    .seg {{
-      display: inline-flex; flex-shrink: 0;
-      background: var(--surface-2); border: 1px solid var(--border);
-      border-radius: 8px; padding: 2px;
+    .score-dial::-webkit-slider-thumb {{
+      -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+      background: var(--accent); cursor: pointer; box-shadow: 0 0 10px rgba(167, 139, 250, 0.5);
     }}
-    .seg-opt {{
-      font-size: 0.78rem; font-weight: 500; white-space: nowrap;
-      padding: 0.34rem 0.7rem; border-radius: 6px;
-      background: transparent; color: var(--muted);
-      transition: color 0.12s, background 0.12s;
+    .score-dial:focus::-webkit-slider-thumb {{ box-shadow: 0 0 15px rgba(167, 139, 250, 0.8); }}
+    .cs-toggles {{ display: flex; gap: 0.4rem; flex-wrap: wrap; }}
+    .cs-pill {{
+      font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.75rem; border-radius: 20px;
+      background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid rgba(255,255,255,0.1);
+      transition: all 0.2s; cursor: pointer; user-select: none;
     }}
-    .seg-opt:hover {{ color: var(--text); }}
-    .seg-opt.active {{ background: var(--accent); color: var(--bg); font-weight: 600; }}
-    .seg-opt.active.tonight {{ background: var(--tonight); color: #fff; }}
-
-    /* Toggle pills (Last.fm, Favs) */
-    .chip {{
-      flex-shrink: 0;
-      font-size: 0.78rem; font-weight: 500; white-space: nowrap;
-      padding: 0.36rem 0.72rem;
-      display: inline-flex; align-items: center; gap: 0.3rem;
-      border: 1px solid var(--border); border-radius: 8px;
-      background: transparent; color: var(--muted);
-      transition: all 0.12s;
+    .cs-pill:hover {{ background: rgba(255,255,255,0.1); color: var(--text); }}
+    .cs-pill.active {{ background: var(--accent); color: var(--bg); border-color: var(--accent); }}
+    .cs-genres {{ display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.2rem; scrollbar-width: none; }}
+    .cs-genres::-webkit-scrollbar {{ display: none; }}
+    .cs-genre-pill {{
+      flex-shrink: 0; font-size: 0.65rem; padding: 0.25rem 0.6rem; border-radius: 6px;
+      background: transparent; color: var(--muted); border: 1px solid var(--border);
+      cursor: pointer; transition: all 0.2s; text-transform: lowercase; user-select: none;
     }}
-    .chip:hover {{ border-color: var(--muted); color: var(--text); }}
-    .chip.active {{
-      background: var(--accent); border-color: var(--accent);
-      color: var(--bg); font-weight: 600;
-    }}
-    .chip.taste-active {{
-      background: #34d399; border-color: #34d399; color: #04231a; font-weight: 600;
-    }}
+    .cs-genre-pill:hover {{ border-color: var(--muted); color: var(--text); }}
+    .cs-genre-pill.active {{ border-color: var(--accent); color: var(--accent); background: rgba(167, 139, 250, 0.1); }}
 
     /* Sort row */
     .sort-row {{
@@ -942,6 +965,56 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       letter-spacing: 0.07em; color: var(--muted);
       padding: 0.65rem 0 0.3rem; opacity: 0.7;
     }}
+    
+    /* ── Settings Form ───────────────────────── */
+    .settings-form {{ display: flex; flex-direction: column; gap: 1.25rem; padding-top: 0.5rem; }}
+    .settings-group {{ display: flex; flex-direction: column; gap: 0.4rem; }}
+    .settings-group label {{ font-size: 0.8rem; font-weight: 600; color: var(--muted); }}
+    .settings-group input {{
+      padding: 0.65rem; font-size: 0.9rem; font-family: var(--font);
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; outline: none;
+      transition: border-color 0.2s;
+    }}
+    .settings-group input:focus {{ border-color: var(--accent); }}
+    .settings-save-btn {{
+      background: var(--accent); color: var(--bg); font-weight: 700; font-size: 0.9rem;
+      padding: 0.75rem; border-radius: 6px; border: none; cursor: pointer;
+      margin-top: 0.5rem; transition: opacity 0.2s;
+    }}
+    .settings-save-btn:hover {{ opacity: 0.9; }}
+
+    /* ── Scraping Toast ──────────────────────── */
+    .scraping-toast {{
+      position: fixed; bottom: 2rem; right: 2rem;
+      background: rgba(20,20,20,0.95); backdrop-filter: blur(10px);
+      border: 1px solid rgba(167, 139, 250, 0.4); border-radius: 10px;
+      padding: 1.25rem 1.5rem; z-index: 1000;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8), 0 0 20px rgba(167, 139, 250, 0.15);
+      display: flex; flex-direction: column; gap: 0.6rem; min-width: 320px;
+      transform: translateY(150%); opacity: 0; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }}
+    .scraping-toast.visible {{
+      transform: translateY(0); opacity: 1;
+    }}
+    .scraping-toast .toast-title {{
+      font-size: 0.9rem; font-weight: 600; color: var(--text);
+      display: flex; align-items: center; gap: 0.5rem;
+    }}
+    .scraping-toast .toast-bar-bg {{
+      height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;
+      position: relative;
+    }}
+    .scraping-toast .toast-bar-fill {{
+      height: 100%; background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      transition: width 0.2s ease-out;
+    }}
+    .scraping-toast .toast-status {{
+      font-size: 0.75rem; color: var(--muted); font-family: var(--mono);
+      display: flex; justify-content: space-between;
+    }}
+    
     .venue-item {{
       display: flex; align-items: center; gap: 0.65rem;
       padding: 0.35rem 0; cursor: pointer; font-size: 0.875rem;
@@ -955,7 +1028,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
   </style>
 </head>
 <body>
-<div id="app">
+<div id="app" @click="vialOpen = false">
 
   <header class="site-header" :class="{{ compact: headerCompact }}">
     <div class="header-inner">
@@ -964,8 +1037,12 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
         <div class="brand-meta">
           <strong>{{{{ filteredShows.length }}}}</strong> shows &middot; {ts}
         </div>
-      </div>
-      <div class="health-stats">
+        <div class="header-tools">
+          <div class="tool-btn vial-btn" @click="vialOpen = !vialOpen" :class="{{active: vialOpen}}" title="Health Metrics">🧪</div>
+          <div class="tool-btn settings-btn" @click="settingsOpen = true" title="Settings">⚙️</div>
+          
+                    <div class="vial-popover" v-if="vialOpen" @click.stop>
+            <div class="health-stats">
         <div class="hs-col hs-taste" title="Matched to your Last.fm taste">
           <div class="hs-label"><span>Taste</span><span class="hs-v">{{{{ matchPct }}}}%</span></div>
           <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: matchPct + '%'}}"></div></div>
@@ -982,9 +1059,12 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
           <div class="hs-label"><span>Pictured</span><span class="hs-v">{{{{ picturedPct }}}}%</span></div>
           <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: picturedPct + '%'}}"></div></div>
         </div>
-        <div class="hs-col hs-located" title="Has a drive-time ETA">
-          <div class="hs-label"><span>Located</span><span class="hs-v">{{{{ locatedPct }}}}%</span></div>
-          <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: locatedPct + '%'}}"></div></div>
+              <div class="hs-col hs-located" title="Has a drive-time ETA">
+                <div class="hs-label"><span>Located</span><span class="hs-v">{{{{ locatedPct }}}}%</span></div>
+                <div class="hs-bar-bg"><div class="hs-bar-fill" :style="{{width: locatedPct + '%'}}"></div></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -993,15 +1073,23 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
         <button v-if="searchQuery" class="clear-search" @click="searchQuery = ''">&times;</button>
       </div>
 
-      <div class="filter-row">
-        <div class="seg">
-          <button class="seg-opt" :class="{{active: dateRange === 'tonight', tonight: dateRange === 'tonight'}}" @click="setDate('tonight')">Tonight</button>
-          <button class="seg-opt" :class="{{active: dateRange === 'week'}}" @click="setDate('week')">Week</button>
-          <button class="seg-opt" :class="{{active: dateRange === 'month'}}" @click="setDate('month')">Month</button>
-          <button class="seg-opt" :class="{{active: dateRange === 'all'}}" @click="setDate('all')">All</button>
+      <div class="command-strip">
+        <div class="cs-top">
+          <div class="cs-slider-group">
+            <label class="cs-label">Score Filter <span v-if="minScore > 0">(> {{{{ minScore }}}})</span><span v-else>(Any)</span></label>
+            <input type="range" class="score-dial" min="0" max="100" v-model.number="minScore" />
+          </div>
+          <div class="cs-toggles">
+            <button class="cs-pill" :class="{{active: matchedOnly}}" @click="matchedOnly = !matchedOnly" title="Only shows matched to your Last.fm taste">🎵 Last.fm</button>
+            <button class="cs-pill" :class="{{active: favoritesOnly}}" @click="favsChipClick">★ Favs</button>
+            <button class="cs-pill" :class="{{active: maxCost <= 20}}" @click="maxCost = maxCost === 20 ? 1000 : 20">💸 Cheap</button>
+            <button class="cs-pill" :class="{{active: maxDrive <= 15}}" @click="maxDrive = maxDrive === 15 ? 1000 : 15">🚗 Close</button>
+            <button class="cs-pill" :class="{{active: minScore >= 80}}" @click="minScore = minScore >= 80 ? 0 : 80">✨ Top Matches</button>
+          </div>
         </div>
-        <button class="chip" :class="{{'taste-active': matchedOnly}}" @click="matchedOnly = !matchedOnly" title="Only shows matched to your Last.fm taste">&#9834; Last.fm</button>
-        <button class="chip" :class="{{active: favoritesOnly}}" @click="favsChipClick">&#9733; Favs</button>
+        <div class="cs-genres" v-if="topGenres.length > 0">
+          <button v-for="g in topGenres" :key="g" class="cs-genre-pill" :class="{{active: selectedGenres.includes(g)}}" @click="toggleGenre(g)">{{{{ g }}}}</button>
+        </div>
       </div>
 
       <div class="sort-row">
@@ -1081,8 +1169,8 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
           </div>
 
           <!-- Score badge — hidden when not scored -->
-          <div class="score-badge-circle" :class="scoreClass(show.score_total)" :style="{{'--score': show.score_total || 0}}" v-if="show.score_total !== null">
-            <span>{{{{ show.score_total === 0 ? '-' : show.score_total }}}}</span>
+          <div class="score-badge-circle" :class="scoreClass(displayScore(show.score_total))" :style="{{'--score': displayScore(show.score_total) || 0}}" v-if="show.score_total !== null">
+            <span>{{{{ displayScore(show.score_total) === 0 ? '-' : displayScore(show.score_total) }}}}</span>
           </div>
 
           <!-- Chevron -->
@@ -1207,6 +1295,43 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     </div>
   </div>
 
+
+  <!-- Settings sheet -->
+  <div class="overlay centered" :class="{{open: settingsOpen}}" @click.self="settingsOpen = false">
+    <div class="sheet" style="border-radius:12px;max-width:480px;">
+      <div class="sheet-header">
+        <span class="sheet-title">Settings</span>
+        <button class="sheet-close" @click="settingsOpen = false">&times;</button>
+      </div>
+      <div class="settings-form">
+        <div class="settings-group">
+          <label>Last.fm Username</label>
+          <input type="text" v-model="settingsLastfm" placeholder="e.g. your_username" />
+        </div>
+        <div class="settings-group">
+          <label>Home Address (for ETA routing)</label>
+          <input type="text" v-model="settingsAddress" placeholder="e.g. 123 Main St, Portland, OR" />
+        </div>
+        <button class="settings-save-btn" @click="saveSettings">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scraping Progress Toast -->
+  <div class="scraping-toast" :class="{{visible: scrapingActive}}">
+    <div class="toast-title">
+      <span v-if="scrapingProgress < 100">🧪 Syncing Last.fm Data...</span>
+      <span v-else>✨ Sync Complete</span>
+    </div>
+    <div class="toast-bar-bg">
+      <div class="toast-bar-fill" :style="{{width: scrapingProgress + '%'}}"></div>
+    </div>
+    <div class="toast-status">
+      <span>{{{{ scrapingStatusText }}}}</span>
+      <span>{{{{ Math.round(scrapingProgress) }}}}%</span>
+    </div>
+  </div>
+
 </div><!-- #app -->
 
 <script>
@@ -1220,7 +1345,6 @@ createApp({{
     const expandedText = ref({{}});
     const favsOpen   = ref(false);
     const playlistOpen = ref(false);
-    const dateRange  = ref('all');
     const sortMode   = ref('date');
     const matchedOnly   = ref(false);
     const favoritesOnly = ref(false);
@@ -1229,17 +1353,41 @@ createApp({{
     const searchQuery = ref('');
     const spotifyPlaylistId = ref('{spotify_id}');
     const now = ref(Date.now() / 1000);
+    
+    // Command Strip State
+    const minScore = ref(0);
+    const maxCost = ref(1000);
+    const maxDrive = ref(1000);
+    const selectedGenres = ref([]);
 
-    // ── Date helpers ───────────────────────────
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const inDays = (n) => {{
-      const d = new Date(); d.setDate(d.getDate() + n);
-      return d.toISOString().slice(0, 10);
+    const toggleGenre = (g) => {{
+      if (selectedGenres.value.includes(g)) {{
+        selectedGenres.value = selectedGenres.value.filter(x => x !== g);
+      }} else {{
+        selectedGenres.value.push(g);
+      }}
     }};
 
-    const setDate = (v) => {{ dateRange.value = v; }};
+    const topGenres = computed(() => {{
+      const counts = {{}};
+      shows.value.forEach(s => {{
+        if (s.genres) {{
+          s.genres.forEach(g => {{
+            counts[g] = (counts[g] || 0) + 1;
+          }});
+        }}
+      }});
+      return Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(x => x[0]);
+    }});
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+
     const resetFilters = () => {{
-      dateRange.value = 'all'; matchedOnly.value = false;
+      minScore.value = 0; maxCost.value = 1000; maxDrive.value = 1000;
+      selectedGenres.value = []; matchedOnly.value = false;
       favoritesOnly.value = false; searchQuery.value = '';
     }};
     // Chip toggles filter off if active, opens modal otherwise.
@@ -1248,6 +1396,48 @@ createApp({{
       else {{ favsOpen.value = true; }}
     }};
 
+    // ── Settings & Scraping State ──────────────
+    const vialOpen = ref(false);
+    const settingsOpen = ref(false);
+    const settingsLastfm = ref('');
+    const settingsAddress = ref('');
+    const scrapingActive = ref(false);
+    const scrapingProgress = ref(0);
+    const scrapingStatusText = ref('');
+
+    const saveSettings = () => {{
+      settingsOpen.value = false;
+      if (settingsLastfm.value) {{
+        startScraping();
+      }}
+    }};
+
+    const startScraping = () => {{
+      scrapingActive.value = true;
+      scrapingProgress.value = 0;
+      scrapingStatusText.value = 'Connecting to Last.fm...';
+      let progress = 0;
+      const interval = setInterval(() => {{
+        progress += Math.random() * 8;
+        if (progress > 30 && progress < 40) scrapingStatusText.value = 'Fetching listening history...';
+        if (progress > 60 && progress < 70) scrapingStatusText.value = 'Matching artists to venues...';
+        if (progress >= 100) {{
+          progress = 100;
+          scrapingStatusText.value = 'Complete!';
+          clearInterval(interval);
+          setTimeout(() => {{ scrapingActive.value = false; }}, 2500);
+        }}
+        scrapingProgress.value = progress;
+      }}, 150);
+    }};
+
+    // ── Score class ────────────────────────────
+    const displayScore = (raw) => {{
+      if (raw === null) return null;
+      if (raw === 0) return 0;
+      if (raw < 30) return Math.round(raw * (70 / 30));
+      return Math.round(70 + (raw - 30) * (30 / 70));
+    }};
     // ── Score class ────────────────────────────
     const scoreClass = (s) => ({{
       hi:   s !== null && s >= 70,
@@ -1341,14 +1531,19 @@ createApp({{
 
     // ── Filtered / sorted shows ─────────────────
     const filteredShows = computed(() => {{
-      const weekEnd  = inDays(7);
-      const monthEnd = inDays(30);
       const q = searchQuery.value.toLowerCase().trim();
       let r = shows.value.filter(s => {{
         if (isPast(s.timestamp, s.time_known)) return false;  // drop shows already over
-        if (dateRange.value === 'tonight' && s.date !== todayStr) return false;
-        if (dateRange.value === 'week'    && s.date > weekEnd)    return false;
-        if (dateRange.value === 'month'   && s.date > monthEnd)   return false;
+        
+        // Command Strip Filters
+        if (minScore.value > 0) {{
+          const ds = displayScore(s.score_total);
+          if (ds === null || ds < minScore.value) return false;
+        }}
+        if (maxCost.value < 1000 && (s.price === null || s.price > maxCost.value)) return false;
+        if (maxDrive.value < 1000 && (s.travel_minutes === null || s.travel_minutes > maxDrive.value)) return false;
+        if (selectedGenres.value.length > 0 && (!s.genres || !selectedGenres.value.some(g => s.genres.includes(g)))) return false;
+        
         if (matchedOnly.value   && s.score_total === null)                    return false;
         if (favoritesOnly.value && !favoriteVenues.value.includes(s.venue))  return false;
         
@@ -1460,7 +1655,7 @@ createApp({{
         const p = JSON.parse(prefs);
         if (p.matchedOnly)   matchedOnly.value   = p.matchedOnly;
         if (p.favoritesOnly) favoritesOnly.value = p.favoritesOnly;
-        if (p.dateRange)     dateRange.value     = p.dateRange;
+        
         if (p.sortMode)      sortMode.value      = p.sortMode;
       }} catch(e) {{}}
       timer = setInterval(() => {{ now.value = Date.now() / 1000; }}, 60000);
@@ -1484,26 +1679,28 @@ createApp({{
       localStorage.setItem('sc-favs', JSON.stringify(v));
     }}, {{ deep: true }});
 
-    watch([matchedOnly, favoritesOnly, dateRange, sortMode], () => {{
+    watch([matchedOnly, favoritesOnly, sortMode, minScore, maxCost, maxDrive], () => {{
       localStorage.setItem('sc-prefs', JSON.stringify({{
         matchedOnly:   matchedOnly.value,
         favoritesOnly: favoritesOnly.value,
-        dateRange:     dateRange.value,
+        
         sortMode:      sortMode.value,
       }}));
     }});
 
     return {{
       shows, expandedId, favsOpen, playlistOpen,
-      dateRange, sortMode, matchedOnly, favoritesOnly,
+      sortMode, matchedOnly, favoritesOnly,
       favoriteVenues, venueSearch, searchQuery, spotifyPlaylistId,
       filteredShows, groupedShows,
       allVenueNames, venueGroups, showCountByVenue,
-      setDate, resetFilters, favsChipClick, toggleExpand,
-      scoreClass, formatDescription, expandedText, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG, leaveBy,
+      minScore, maxCost, maxDrive, selectedGenres, topGenres, toggleGenre, resetFilters, favsChipClick, toggleExpand,
+      scoreClass, displayScore, formatDescription, expandedText, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG, leaveBy,
       artistUrl, lastfmUrl, onImgError, failedImages, matchedCount, matchPct,
       linkedCount, linkedPct, pricedCount, pricedPct, picturedCount, picturedPct,
-      locatedCount, locatedPct, headerCompact,
+        locatedCount, locatedPct, headerCompact,
+        vialOpen, settingsOpen, settingsLastfm, settingsAddress, saveSettings,
+        scrapingActive, scrapingProgress, scrapingStatusText,
     }};
   }}
 }}).mount('#app');
