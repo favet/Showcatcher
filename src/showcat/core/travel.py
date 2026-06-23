@@ -10,7 +10,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 SQLITE_DB_PATH = os.environ.get("SQLITE_DB_PATH", r"C:\Users\Justin\Documents\PDX Shows\data\pdx.sqlite")
-HOME_CELL_ID = "8828f0003dfffff"
+# The origin cell ETAs are measured from. Env-configurable so the owner's home
+# isn't hardcoded; a future per-user "enter your address" feature will resolve an
+# address to its grid cell and look up that cell instead.
+HOME_CELL_ID = os.environ.get("HOME_CELL_ID", "8828f0003dfffff")
 
 # Estimated travel minutes for venues not yet in the Valhalla matrix.
 _FALLBACK_TRAVEL_MINUTES: dict[str, int] = {
@@ -25,6 +28,13 @@ _FALLBACK_TRAVEL_MINUTES: dict[str, int] = {
     "kelly's olympian":   9,
     "goodfoot":          10,
     "mississippi pizza":  3,
+    # Venues absent from the Valhalla matrix — estimates from 5123 N Williams.
+    "jack london revue": 12,   # downtown basement
+    "nova pdx":          10,   # Central Eastside (ex-Bossanova)
+    "show bar":          12,   # Revolution Hall complex, Buckman
+    "blackberry hall":   12,
+    "newmark theatre":   13,   # downtown
+    "literary arts":     13,   # downtown
 }
 
 

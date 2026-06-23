@@ -409,6 +409,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .hs-linked {{ color: #34d399; }}
     .hs-priced {{ color: #fbbf24; }}
     .hs-pictured {{ color: #f472b6; }}
+    .hs-located {{ color: #60a5fa; }}
 
     /* Search bar */
     .search-row {{
@@ -589,9 +590,10 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     .show-time.soon {{ color: var(--tonight); opacity: 1; font-weight: 700; }}
     .sub-dot {{ opacity: 0.3; flex-shrink: 0; }}
     .travel-chip {{
-      font-family: var(--mono); font-size: 0.64rem; color: #34d399;
-      opacity: 0.8; flex-shrink: 0;
+      font-family: var(--mono); font-size: 0.64rem; color: #60a5fa;
+      opacity: 0.9; flex-shrink: 0;
     }}
+    .leave-by {{ color: var(--muted); margin-left: 0.25rem; }}
 
     /* Openers preview in collapsed card */
     .show-openers-preview {{
@@ -931,6 +933,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
         <span class="hs" title="Linked to a Spotify artist"><b class="hs-v hs-linked">{{{{ linkedPct }}}}%</b> linked</span>
         <span class="hs" title="Has a ticket price"><b class="hs-v hs-priced">{{{{ pricedPct }}}}%</b> priced</span>
         <span class="hs" title="Has artist artwork"><b class="hs-v hs-pictured">{{{{ picturedPct }}}}%</b> pictured</span>
+        <span class="hs" title="Has a drive-time ETA"><b class="hs-v hs-located">{{{{ locatedPct }}}}%</b> located</span>
       </div>
 
       <div class="search-row">
@@ -1006,7 +1009,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
               </template>
               <template v-if="show.travel_minutes">
                 <span class="sub-dot">&middot;</span>
-                <span class="travel-chip">{{{{ show.travel_minutes }}}}m</span>
+                <span class="travel-chip">{{{{ show.travel_minutes }}}}m<span v-if="leaveBy(show)" class="leave-by">&middot; leave {{{{ leaveBy(show) }}}}</span></span>
               </template>
               <template v-if="show.price">
                 <span class="sub-dot">&middot;</span>
@@ -1213,6 +1216,21 @@ createApp({{
     const isPast  = (ts, timeKnown) => timeKnown !== false && ts < now.value - 7200;
     const isSoon  = (ts) => ts > now.value && ts < now.value + 7200;
 
+    // "Leave by" is anchored to the SHOW time (not when the page was built):
+    // depart so you arrive ~30 min before the show, given the venue's drive time.
+    // Only shown for shows whose time we actually know.
+    const ARRIVE_BUFFER_MIN = 30;
+    const fmtClock = (ts) => {{
+      const d = new Date(ts * 1000);
+      let h = d.getHours(); const m = d.getMinutes();
+      const ap = h < 12 ? 'a' : 'p'; h = h % 12; if (h === 0) h = 12;
+      return m === 0 ? `${{h}}${{ap}}` : `${{h}}:${{String(m).padStart(2,'0')}}${{ap}}`;
+    }};
+    const leaveBy = (show) => {{
+      if (show.travel_minutes == null || show.time_known === false) return null;
+      return fmtClock(show.timestamp - (show.travel_minutes + ARRIVE_BUFFER_MIN) * 60);
+    }};
+
     const DEFAULT_SHOW_IMG = "{CATCAT_DATA_URI}";
     const getShowImage = (show) => {{
       if (failedImages.value.has(show.id)) return null;
@@ -1241,6 +1259,8 @@ createApp({{
     const pricedPct   = computed(() => shows.value.length ? Math.round(pricedCount.value / shows.value.length * 100) : 0);
     const picturedCount = computed(() => shows.value.filter(s => s.spotify_album_image_url || s.spotify_artist_image_url || s.event_image_url).length);
     const picturedPct   = computed(() => shows.value.length ? Math.round(picturedCount.value / shows.value.length * 100) : 0);
+    const locatedCount  = computed(() => shows.value.filter(s => s.travel_minutes != null).length);
+    const locatedPct    = computed(() => shows.value.length ? Math.round(locatedCount.value / shows.value.length * 100) : 0);
 
     // ── Filtered / sorted shows ─────────────────
     const filteredShows = computed(() => {{
@@ -1403,10 +1423,10 @@ createApp({{
       filteredShows, groupedShows,
       allVenueNames, venueGroups, showCountByVenue,
       setDate, resetFilters, favsChipClick, toggleExpand,
-      scoreClass, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG,
+      scoreClass, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG, leaveBy,
       artistUrl, lastfmUrl, onImgError, failedImages, matchedCount, matchPct,
       linkedCount, linkedPct, pricedCount, pricedPct, picturedCount, picturedPct,
-      headerCompact,
+      locatedCount, locatedPct, headerCompact,
     }};
   }}
 }}).mount('#app');
