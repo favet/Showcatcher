@@ -486,6 +486,34 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       color: var(--text);
     }}
 
+    /* Search autocomplete dropdown */
+    .search-suggest {{
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
+      overflow: hidden; box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+    }}
+    .suggest-item {{
+      display: flex; align-items: center; gap: 0.55rem; width: 100%;
+      padding: 0.55rem 0.8rem; text-align: left; background: transparent;
+      border: none; border-bottom: 1px solid var(--border); color: var(--text);
+      font-size: 0.85rem; cursor: pointer;
+    }}
+    .suggest-item:last-child {{ border-bottom: none; }}
+    .suggest-item:hover {{ background: var(--accent-dim); }}
+    .suggest-kind {{
+      font-family: var(--mono); font-size: 0.58rem; text-transform: uppercase;
+      letter-spacing: 0.05em; padding: 0.12rem 0.4rem; border-radius: 4px; flex-shrink: 0;
+      border: 1px solid var(--border); color: var(--muted);
+    }}
+    .suggest-kind.venue {{ color: #60a5fa; border-color: rgba(96,165,250,0.4); }}
+    .suggest-kind.artist {{ color: var(--accent); border-color: rgba(167,139,250,0.4); }}
+    .suggest-label {{ flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .suggest-count {{ font-family: var(--mono); font-size: 0.65rem; color: var(--muted); }}
+
+    /* Card date (shown when ranked by Last.fm, where there are no day headers) */
+    .card-date {{ font-family: var(--mono); font-size: 0.66rem; font-weight: 600; color: var(--accent); }}
+    .price-chip {{ font-family: var(--mono); font-size: 0.68rem; color: #fbbf24; opacity: 0.9; }}
+
     /* Command Strip */
     .command-strip {{ display: flex; flex-direction: column; gap: 0.8rem; padding-bottom: 0.8rem; }}
     .cs-top {{ display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }}
@@ -1069,23 +1097,29 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       </div>
 
       <div class="search-row">
-        <input type="text" v-model="searchQuery" placeholder="Search headliners, venues, openers, genres..." class="search-input" />
+        <input type="text" v-model="searchQuery" placeholder="Search venues, artists, genres…" class="search-input"
+               @focus="searchFocused = true" @blur="searchFocused = false" />
         <button v-if="searchQuery" class="clear-search" @click="searchQuery = ''">&times;</button>
+        <div class="search-suggest" v-if="searchFocused && searchSuggestions.length">
+          <button v-for="sug in searchSuggestions" :key="sug.type + sug.label" class="suggest-item"
+                  @mousedown.prevent="pickSuggestion(sug)">
+            <span class="suggest-kind" :class="sug.type">{{{{ sug.type === 'venue' ? 'Venue' : 'Artist' }}}}</span>
+            <span class="suggest-label">{{{{ sug.label }}}}</span>
+            <span class="suggest-count" v-if="sug.count">{{{{ sug.count }}}}</span>
+          </button>
+        </div>
       </div>
 
       <div class="command-strip">
-        <div class="cs-top">
-          <div class="cs-slider-group">
-            <label class="cs-label">Score Filter <span v-if="minScore > 0">(> {{{{ minScore }}}})</span><span v-else>(Any)</span></label>
-            <input type="range" class="score-dial" min="0" max="100" v-model.number="minScore" />
-          </div>
-          <div class="cs-toggles">
-            <button class="cs-pill" :class="{{active: matchedOnly}}" @click="matchedOnly = !matchedOnly" title="Only shows matched to your Last.fm taste">🎵 Last.fm</button>
-            <button class="cs-pill" :class="{{active: favoritesOnly}}" @click="favsChipClick">★ Favs</button>
-            <button class="cs-pill" :class="{{active: maxCost <= 20}}" @click="maxCost = maxCost === 20 ? 1000 : 20">💸 Cheap</button>
-            <button class="cs-pill" :class="{{active: maxDrive <= 15}}" @click="maxDrive = maxDrive === 15 ? 1000 : 15">🚗 Close</button>
-            <button class="cs-pill" :class="{{active: minScore >= 80}}" @click="minScore = minScore >= 80 ? 0 : 80">✨ Top Matches</button>
-          </div>
+        <div class="cs-toggles">
+          <button class="cs-pill" :class="{{active: matchedOnly}}" @click="matchedOnly = !matchedOnly"
+                  title="Only shows by artists from your Last.fm history">My Taste</button>
+          <button class="cs-pill" :class="{{active: favoritesOnly}}" @click="favsChipClick"
+                  title="Only your favorite venues">Favorite venues</button>
+          <button class="cs-pill" :class="{{active: maxCost <= 20}}" @click="maxCost = maxCost === 20 ? 1000 : 20"
+                  title="Tickets $20 or less">Under $20</button>
+          <button class="cs-pill" :class="{{active: maxDrive <= 15}}" @click="maxDrive = maxDrive === 15 ? 1000 : 15"
+                  title="15 minutes or less from home">Nearby</button>
         </div>
         <div class="cs-genres" v-if="topGenres.length > 0">
           <button v-for="g in topGenres" :key="g" class="cs-genre-pill" :class="{{active: selectedGenres.includes(g)}}" @click="toggleGenre(g)">{{{{ g }}}}</button>
@@ -1096,7 +1130,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
         <span class="result-count">{{{{ filteredShows.length }}}} results</span>
         <div class="sort-toggle">
           <button class="sort-opt" :class="{{active: sortMode === 'date'}}" @click="sortMode = 'date'">By Date</button>
-          <button class="sort-opt" :class="{{active: sortMode === 'score'}}" @click="sortMode = 'score'">By Score</button>
+          <button class="sort-opt" :class="{{active: sortMode === 'lastfm'}}" @click="sortMode = 'lastfm'" title="Rank every show by Last.fm match, ignoring date">By Last.fm</button>
         </div>
       </div>
     </div>
@@ -1109,7 +1143,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
     </div>
 
     <template v-for="group in groupedShows" :key="group.date">
-      <div class="day-header"
+      <div class="day-header" v-if="group.date"
            :class="{{
              'is-tonight': group.date === 'TONIGHT',
              'is-tomorrow': group.date === 'TOMORROW'
@@ -1139,8 +1173,12 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
               <span v-else class="show-headliner" :class="{{'is-matched': show.matched_artist}}">{{{{ show.headliner }}}}</span>
             </div>
 
-            <!-- Venue · time · distance -->
+            <!-- (date when ranked) · venue · time · drive · price -->
             <div class="show-sub">
+              <template v-if="sortMode === 'lastfm'">
+                <span class="card-date">{{{{ show.date_display }}}}</span>
+                <span class="sub-dot">&middot;</span>
+              </template>
               <span class="show-venue">{{{{ show.venue }}}}</span>
               <template v-if="show.show_display || show.doors_display">
                 <span class="sub-dot">&middot;</span>
@@ -1149,11 +1187,11 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
               </template>
               <template v-if="show.travel_minutes">
                 <span class="sub-dot">&middot;</span>
-                <span class="travel-chip">🚗 {{{{ show.travel_minutes }}}}m drive<span v-if="leaveBy(show)" class="leave-by">&middot; Leave by {{{{ leaveBy(show) }}}}</span></span>
+                <span class="travel-chip">{{{{ show.travel_minutes }}}} min</span>
               </template>
               <template v-if="show.price">
                 <span class="sub-dot">&middot;</span>
-                <span style="font-family:var(--mono);font-size:0.68rem;color:#fbbf24;opacity:0.9">{{{{ show.price }}}}</span>
+                <span class="price-chip">{{{{ show.price }}}}</span>
               </template>
             </div>
 
@@ -1529,19 +1567,24 @@ createApp({{
     const locatedCount  = computed(() => shows.value.filter(s => s.travel_minutes != null).length);
     const locatedPct    = computed(() => shows.value.length ? Math.round(locatedCount.value / shows.value.length * 100) : 0);
 
+    // Parse the lowest dollar amount out of a price string ("$25", "$25 - $40",
+    // "Free", "$15.00") → a number; "free" → 0; nothing parseable → null.
+    const priceNum = (p) => {{
+      if (p == null) return null;
+      if (/free/i.test(p)) return 0;
+      const m = String(p).match(/\\d+(?:\\.\\d+)?/);
+      return m ? parseFloat(m[0]) : null;
+    }};
+
     // ── Filtered / sorted shows ─────────────────
     const filteredShows = computed(() => {{
       const q = searchQuery.value.toLowerCase().trim();
       let r = shows.value.filter(s => {{
         if (isPast(s.timestamp, s.time_known)) return false;  // drop shows already over
-        
-        // Command Strip Filters
-        if (minScore.value > 0) {{
-          const ds = displayScore(s.score_total);
-          if (ds === null || ds < minScore.value) return false;
-        }}
-        if (maxCost.value < 1000 && (s.price === null || s.price > maxCost.value)) return false;
-        if (maxDrive.value < 1000 && (s.travel_minutes === null || s.travel_minutes > maxDrive.value)) return false;
+
+        // Quick filters
+        if (maxCost.value < 1000) {{ const pn = priceNum(s.price); if (pn === null || pn > maxCost.value) return false; }}
+        if (maxDrive.value < 1000 && (s.travel_minutes == null || s.travel_minutes > maxDrive.value)) return false;
         if (selectedGenres.value.length > 0 && (!s.genres || !selectedGenres.value.some(g => s.genres.includes(g)))) return false;
         
         if (matchedOnly.value   && s.score_total === null)                    return false;
@@ -1561,24 +1604,45 @@ createApp({{
     }});
 
     const groupedShows = computed(() => {{
+      // "By Last.fm" ignores date entirely: one flat list, every show ranked by
+      // its Last.fm match score (highest first; unscored shows fall to the end,
+      // ordered by date). Cards carry their own date in this mode.
+      if (sortMode.value === 'lastfm') {{
+        const all = [...filteredShows.value].sort((a, b) => {{
+          if (a.score_total === null && b.score_total === null) return a.timestamp - b.timestamp;
+          if (a.score_total === null) return 1;
+          if (b.score_total === null) return -1;
+          return b.score_total - a.score_total;
+        }});
+        return [{{ date: '', shows: all }}];
+      }}
       const map = {{}};
       filteredShows.value.forEach(s => {{
         if (!map[s.date_display]) map[s.date_display] = [];
         map[s.date_display].push(s);
       }});
-      return Object.keys(map).map(d => {{
-        let list = map[d];
-        if (sortMode.value === 'score') {{
-          list = [...list].sort((a, b) => {{
-            if (a.score_total === null && b.score_total === null) return 0;
-            if (a.score_total === null) return 1;
-            if (b.score_total === null) return -1;
-            return b.score_total - a.score_total;
-          }});
-        }}
-        return {{ date: d, shows: list }};
-      }});
+      return Object.keys(map).map(d => ({{ date: d, shows: map[d] }}));
     }});
+
+    // ── Search autocomplete (venues + artists) ──
+    const searchFocused = ref(false);
+    const searchSuggestions = computed(() => {{
+      const q = searchQuery.value.toLowerCase().trim();
+      if (q.length < 1) return [];
+      const venues = new Map(), arts = new Set();
+      for (const s of shows.value) {{
+        if (s.venue && s.venue.toLowerCase().includes(q)) venues.set(s.venue, (venues.get(s.venue) || 0) + 1);
+        if (s.headliner && s.headliner.toLowerCase().includes(q)) arts.add(s.headliner);
+      }}
+      // Don't bother suggesting when the query already equals the only match.
+      const vs = [...venues.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+                   .map(([name, n]) => ({{ type: 'venue', label: name, count: n }}));
+      const as = [...arts].slice(0, 4).map(name => ({{ type: 'artist', label: name }}));
+      const all = [...vs, ...as];
+      if (all.length === 1 && all[0].label.toLowerCase() === q) return [];
+      return all.slice(0, 8);
+    }});
+    const pickSuggestion = (sug) => {{ searchQuery.value = sug.label; searchFocused.value = false; }};
 
     // ── Venue modal data ───────────────────────
     const showCountByVenue = computed(() => {{
@@ -1655,8 +1719,7 @@ createApp({{
         const p = JSON.parse(prefs);
         if (p.matchedOnly)   matchedOnly.value   = p.matchedOnly;
         if (p.favoritesOnly) favoritesOnly.value = p.favoritesOnly;
-        
-        if (p.sortMode)      sortMode.value      = p.sortMode;
+        if (p.sortMode === 'date' || p.sortMode === 'lastfm') sortMode.value = p.sortMode;
       }} catch(e) {{}}
       timer = setInterval(() => {{ now.value = Date.now() / 1000; }}, 60000);
       
@@ -1692,6 +1755,7 @@ createApp({{
       shows, expandedId, favsOpen, playlistOpen,
       sortMode, matchedOnly, favoritesOnly,
       favoriteVenues, venueSearch, searchQuery, spotifyPlaylistId,
+      searchFocused, searchSuggestions, pickSuggestion,
       filteredShows, groupedShows,
       allVenueNames, venueGroups, showCountByVenue,
       minScore, maxCost, maxDrive, selectedGenres, topGenres, toggleGenre, resetFilters, favsChipClick, toggleExpand,
