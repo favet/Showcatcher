@@ -346,7 +346,15 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       max-width: 720px;
       margin: 0 auto;
       padding: 1rem 1.25rem 0.5rem;
+      transition: padding 0.18s ease;
     }}
+    /* Collapsed (scrolled) header: drop everything except the filter chips so
+       the sticky bar is slim. Brand, search and sort are one scroll-up away. */
+    .site-header.compact .brand-row,
+    .site-header.compact .search-row,
+    .site-header.compact .sort-row {{ display: none; }}
+    .site-header.compact .header-inner {{ padding-top: 0.4rem; padding-bottom: 0.15rem; }}
+    .site-header.compact .filter-row {{ padding-bottom: 0.35rem; }}
     .brand-row {{
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 0.75rem;
@@ -873,7 +881,7 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
 <body>
 <div id="app">
 
-  <header class="site-header">
+  <header class="site-header" :class="{{ compact: headerCompact }}">
     <div class="header-inner">
       <div class="brand-row">
         <div class="brand"><span class="brand-logo">showcat</span></div>
@@ -1297,6 +1305,13 @@ createApp({{
       }}
     }};
 
+    // ── Collapse the sticky header on scroll ───
+    // Full header at the top; once scrolled it shrinks to just the filter chips
+    // so it stops dominating the viewport (esp. on mobile).
+    const headerCompact = ref(false);
+    const onScroll = () => {{ headerCompact.value = window.scrollY > 60; }};
+    watch(headerCompact, () => nextTick(updateHeaderHeight));
+
     // ── Persistence ────────────────────────────
     let timer;
     onMounted(() => {{
@@ -1314,10 +1329,12 @@ createApp({{
       
       updateHeaderHeight();
       window.addEventListener('resize', updateHeaderHeight);
+      window.addEventListener('scroll', onScroll, {{ passive: true }});
     }});
     onUnmounted(() => {{
       clearInterval(timer);
       window.removeEventListener('resize', updateHeaderHeight);
+      window.removeEventListener('scroll', onScroll);
     }});
 
     watch(favoriteVenues, (v) => {{
@@ -1343,6 +1360,7 @@ createApp({{
       scoreClass, fmtTime, isPast, isSoon, getShowImage, DEFAULT_SHOW_IMG,
       artistUrl, lastfmUrl, onImgError, failedImages, matchedCount, matchPct,
       linkedCount, linkedPct, pricedCount, pricedPct, picturedCount, picturedPct,
+      headerCompact,
     }};
   }}
 }}).mount('#app');
