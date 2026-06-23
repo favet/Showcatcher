@@ -346,7 +346,9 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
       max-width: 720px;
       margin: 0 auto;
       padding: 1rem 1.25rem 0.5rem;
-      transition: padding 0.18s ease;
+      /* No height transition: the collapse is instant so the header's real
+         height always equals the measured --header-h (an animated height would
+         drift from --header-h mid-transition and open a variable gap). */
     }}
     /* Collapsed (scrolled) header: drop everything except the filter chips so
        the sticky bar is slim. Brand, search and sort are one scroll-up away. */
@@ -477,7 +479,9 @@ def render_html(shows: list[dict[str, Any]], generated_at: dt.datetime) -> str:
 
     /* ── Date header ─────────────────────────── */
     .day-header {{
-      position: sticky; top: var(--header-h, 130px); z-index: 10;
+      /* Tuck 1px up under the header (z-index 20 > 10, so the overlap is hidden)
+         to defeat sub-pixel rounding that otherwise leaves a 1px gap. */
+      position: sticky; top: calc(var(--header-h, 130px) - 1px); z-index: 10;
       display: flex; justify-content: space-between; align-items: center;
       padding: 0.5rem 0.75rem;
       background: rgba(14, 12, 10, 0.95); backdrop-filter: blur(8px);
@@ -1300,7 +1304,10 @@ createApp({{
     const updateHeaderHeight = () => {{
       const header = document.querySelector('.site-header');
       if (header) {{
-        const height = header.offsetHeight;
+        // floor() so --header-h is never larger than the real height — the
+        // day-header then tucks under the header (gap-free) rather than dropping
+        // below it (which would show a sub-pixel gap).
+        const height = Math.floor(header.getBoundingClientRect().height);
         document.documentElement.style.setProperty('--header-h', `${{height}}px`);
       }}
     }};
@@ -1309,7 +1316,12 @@ createApp({{
     // Full header at the top; once scrolled it shrinks to just the filter chips
     // so it stops dominating the viewport (esp. on mobile).
     const headerCompact = ref(false);
-    const onScroll = () => {{ headerCompact.value = window.scrollY > 60; }};
+    const onScroll = () => {{
+      headerCompact.value = window.scrollY > 60;
+      // Re-measure every scroll so --header-h always equals the live header
+      // height — no reliance on a single stale measurement.
+      updateHeaderHeight();
+    }};
     watch(headerCompact, () => nextTick(updateHeaderHeight));
 
     // ── Persistence ────────────────────────────
@@ -1330,6 +1342,11 @@ createApp({{
       updateHeaderHeight();
       window.addEventListener('resize', updateHeaderHeight);
       window.addEventListener('scroll', onScroll, {{ passive: true }});
+      // Fonts load async and reflow the header — re-measure once they're ready
+      // so the initial --header-h isn't stale.
+      if (document.fonts && document.fonts.ready) {{
+        document.fonts.ready.then(updateHeaderHeight);
+      }}
     }});
     onUnmounted(() => {{
       clearInterval(timer);
